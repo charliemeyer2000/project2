@@ -1,5 +1,7 @@
 """Visualization utilities for training analysis."""
 
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for servers
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
