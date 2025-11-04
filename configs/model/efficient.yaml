@@ -1,0 +1,9 @@
+# Efficient Autoencoder Configuration
+# Uses depthwise separable convolutions for smaller model size
+# Expected sizes: LD=8 (~2-3MB), LD=16 (~3-4MB), LD=32 (~5-6MB)
+
+architecture: efficient
+latent_dim: 16
+channels: 3
+img_size: 256
+

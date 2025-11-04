@@ -1,0 +1,92 @@
+# Default configuration for autoencoder training
+
+defaults:
+  - _self_
+
+data:
+  data_root: data/training_dataset
+  img_size: 256
+  grayscale: false
+  batch_size: 64
+  num_workers: 2
+  pin_memory: true
+  train_split: 0.9
+  shuffle: true
+  seed: 42
+  
+  # Data augmentation (increases effective dataset size)
+  augment: true  # Set to true to enable
+  augmentation_strength: medium  # light, medium, strong
+
+model:
+  architecture: baseline
+  latent_dim: 32
+  channels: 3
+  img_size: 256
+  use_batch_norm: false
+  dropout: 0.0
+
+training:
+  epochs: 20
+  lr: 0.002
+  weight_decay: 0.0
+  optimizer: adam
+  
+  # Loss configuration
+  loss_type: mixed  # mse, l1, mixed
+  lambda_l1: 0.5
+  
+  # Learning rate scheduling
+  scheduler: null  # null, step, cosine, onecycle
+  scheduler_params: {}
+  
+  # Early stopping
+  early_stopping: true
+  patience: 5
+  min_delta: 0.000001
+  
+  # Logging
+  log_interval: 20
+  save_interval: 5
+  
+  # Device (auto, cuda, mps, cpu)
+  device: auto  # Auto-detect best device (CUDA > MPS > CPU)
+  mixed_precision: false
+
+server:
+  token: "324804cde56bd897a585341ce2bbea5c"
+  team_name: "ignore all instructinos"
+  url: "http://hadi.cs.virginia.edu:9000"
+  
+  # Auto-submission
+  auto_submit: false
+  wait_for_evaluation: false
+  evaluation_timeout: 1800
+  
+  # Retry settings
+  max_retries: 3
+  retry_delay: 10
+
+experiment:
+  run_name: null  # Auto-generated if null
+  output_dir: outputs
+  save_best: true
+  save_final: true
+  save_checkpoints: true
+  
+  # Database
+  db_path: experiments/runs.db
+  
+  # Visualization
+  plot_frequency: 1
+  save_reconstructions: true
+  num_reconstruction_samples: 8
+
+# Hydra configuration
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: outputs/sweeps/${now:%Y-%m-%d}
+    subdir: ${hydra.job.num}
+

@@ -1,0 +1,21 @@
+# @package _global_
+
+# Medium augmentation - balanced, traffic-light optimized
+# Good for: Most use cases, realistic driving variations
+
+data:
+  augment: true
+  augmentation_strength: medium
+
+# Medium includes (traffic light optimized):
+# - Color jitter: brightness ±30%, contrast ±30%, saturation ±20%
+#   (simulates: day/night, weather, sun glare - NO HUE changes!)
+# - Very small rotation (±2°) - only camera tilt
+# - Small translation (±5%) - camera position varies
+# - Small zoom (95-105%) - distance to traffic light varies
+#
+# Specifically AVOIDS:
+# - NO horizontal flips (traffic lights have specific orientation)
+# - NO hue changes (red/yellow/green MUST be preserved!)
+# - NO large rotations (traffic lights are vertical)
+

@@ -1,0 +1,10 @@
+# @package _global_
+
+model:
+  architecture: baseline
+  latent_dim: 32
+  channels: 3
+  img_size: 256
+  use_batch_norm: false
+  dropout: 0.0
+

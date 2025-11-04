@@ -1,0 +1,27 @@
+# Augmentation comparison sweep
+# Test the impact of different augmentation strategies
+
+base_args:
+  - "model.latent_dim=32"
+  - "training.epochs=15"
+  - "experiment.plot_frequency=0"
+
+parameters:
+  # Test augmentation on/off
+  data.augment:
+    - false
+    - true
+  
+  # Test different strengths
+  data.augmentation_strength:
+    - light
+    - medium
+    - strong
+
+# This generates 2 × 3 = 6 runs:
+# 1. No augmentation
+# 2. Light augmentation
+# 3. Medium augmentation  
+# 4. Strong augmentation
+# (+ duplicates for the false×strength combinations, which will use false)
+

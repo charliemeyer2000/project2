@@ -1,0 +1,16 @@
+# @package _global_
+
+# Light augmentation - minimal changes
+# Good for: Initial experimentation, baseline testing
+
+data:
+  augment: true
+  augmentation_strength: light
+
+# Light includes (traffic light optimized):
+# - Brightness/contrast variations (±20%) - simulates lighting conditions
+# 
+# Does NOT include:
+# - NO horizontal flips (orientation matters for driving)
+# - NO hue changes (red/yellow/green are critical!)
+

@@ -1,0 +1,385 @@
+"""Main training script with Hydra configuration."""
+
+import os
+import sys
+import time
+import logging
+from pathlib import Path
+from datetime import datetime
+import torch
+import hydra
+from omegaconf import DictConfig, OmegaConf
+
+from infrastructure.config import Config
+from infrastructure.database import ExperimentDatabase
+from infrastructure.server import ServerAPI
+from infrastructure.data import create_dataloaders
+from infrastructure.device import get_device, print_device_info
+from infrastructure.training import (
+    train_epoch, validate_epoch, EarlyStopping,
+    get_loss_fn, get_optimizer, get_scheduler
+)
+from infrastructure.evaluation import evaluate_model
+from infrastructure.checkpoint import save_torchscript, save_checkpoint
+from infrastructure.visualization import (
+    plot_loss_curves, plot_mse_comparison, plot_reconstructions
+)
+from models import get_model as create_model, list_models
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+def get_model(model_config):
+    """Create model from configuration."""
+    return create_model(
+        architecture=model_config.architecture,
+        channels=model_config.channels,
+        latent_dim=model_config.latent_dim,
+        img_size=model_config.img_size
+    )
+
+
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main(cfg: DictConfig):
+    """Main training function."""
+    
+    # Convert to our config class
+    config_dict = OmegaConf.to_container(cfg, resolve=True)
+    
+    logger.info("=" * 80)
+    logger.info("Starting training run")
+    logger.info("=" * 80)
+    
+    # Get output directory from Hydra
+    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+    logger.info(f"Output directory: {output_dir}")
+    
+    # Generate run name if not provided
+    if cfg.experiment.run_name is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"{cfg.model.architecture}_ld{cfg.model.latent_dim}_{timestamp}"
+    else:
+        run_name = cfg.experiment.run_name
+    
+    logger.info(f"Run name: {run_name}")
+    
+    # Initialize database
+    db = ExperimentDatabase(cfg.experiment.db_path)
+    
+    # Create experiment entry
+    try:
+        exp_id = db.create_experiment(run_name, config_dict)
+        logger.info(f"Created experiment in database (ID: {exp_id})")
+    except ValueError as e:
+        logger.error(f"Experiment name already exists: {e}")
+        return
+    
+    # Update experiment with output directory
+    db.update_experiment(run_name, output_dir=str(output_dir))
+    
+    # Set device with Apple Silicon support
+    device = get_device(cfg.training.device)
+    print_device_info(device)
+    
+    # Create dataloaders
+    logger.info("Creating dataloaders...")
+    train_loader, val_loader = create_dataloaders(
+        data_root=cfg.data.data_root,
+        img_size=cfg.data.img_size,
+        grayscale=cfg.data.grayscale,
+        batch_size=cfg.data.batch_size,
+        train_split=cfg.data.train_split,
+        num_workers=cfg.data.num_workers,
+        pin_memory=cfg.data.pin_memory,
+        seed=cfg.data.seed,
+        shuffle=cfg.data.shuffle,
+        augment=cfg.data.augment,
+        augmentation_strength=cfg.data.augmentation_strength
+    )
+    
+    # Create model
+    logger.info("Creating model...")
+    model = get_model(cfg.model).to(device)
+    
+    # Count parameters
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logger.info(f"Model parameters: {num_params:,}")
+    
+    # Update database with model info
+    db.update_experiment(
+        run_name,
+        model_architecture=cfg.model.architecture,
+        latent_dim=cfg.model.latent_dim,
+        num_parameters=num_params
+    )
+    
+    # Create optimizer
+    optimizer = get_optimizer(
+        model,
+        cfg.training.optimizer,
+        cfg.training.lr,
+        cfg.training.weight_decay
+    )
+    
+    # Create loss function
+    criterion = get_loss_fn(cfg.training.loss_type, cfg.training.lambda_l1)
+    
+    # Create scheduler
+    scheduler = get_scheduler(
+        optimizer,
+        cfg.training.scheduler,
+        cfg.training.scheduler_params,
+        cfg.training.epochs,
+        len(train_loader)
+    )
+    
+    # Early stopping
+    early_stopping = None
+    if cfg.training.early_stopping:
+        early_stopping = EarlyStopping(
+            patience=cfg.training.patience,
+            min_delta=cfg.training.min_delta
+        )
+    
+    # Training history
+    train_losses = []
+    val_losses = []
+    train_mses = []
+    val_mses = []
+    
+    best_val_loss = float('inf')
+    best_epoch = 0
+    
+    # Training loop
+    logger.info("=" * 80)
+    logger.info("Starting training")
+    logger.info("=" * 80)
+    
+    start_time = time.time()
+    
+    for epoch in range(1, cfg.training.epochs + 1):
+        epoch_start = time.time()
+        
+        # Train
+        train_metrics = train_epoch(
+            model, train_loader, optimizer, criterion,
+            device=device,
+            mixed_precision=cfg.training.mixed_precision,
+            log_interval=cfg.training.log_interval,
+            epoch=epoch
+        )
+        
+        # Validate
+        val_metrics = validate_epoch(
+            model, val_loader, criterion,
+            device=device,
+            mixed_precision=cfg.training.mixed_precision
+        )
+        
+        # Update scheduler
+        if scheduler is not None:
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(val_metrics['val_loss'])
+            else:
+                scheduler.step()
+        
+        epoch_time = time.time() - epoch_start
+        
+        # Log
+        train_loss = train_metrics['train_loss']
+        val_loss = val_metrics['val_loss']
+        val_mse = val_metrics['val_mse']
+        
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        val_mses.append(val_mse)
+        
+        logger.info(
+            f"Epoch {epoch}/{cfg.training.epochs} | "
+            f"Train Loss: {train_loss:.6f} | "
+            f"Val Loss: {val_loss:.6f} | "
+            f"Val MSE: {val_mse:.6f} | "
+            f"Time: {epoch_time:.2f}s"
+        )
+        
+        # Save to database
+        db.add_training_epoch(
+            run_name, epoch,
+            train_loss=train_loss,
+            val_loss=val_loss,
+            val_mse=val_mse,
+            epoch_time=epoch_time
+        )
+        
+        # Check if best
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_epoch = epoch
+            
+            if cfg.experiment.save_best:
+                # Save checkpoint
+                checkpoint_path = output_dir / "checkpoints" / "best_checkpoint.pth"
+                save_checkpoint(model, optimizer, epoch, val_loss, 
+                              str(checkpoint_path))
+                logger.info(f"💾 Saved best checkpoint (epoch {epoch})")
+        
+        # Periodic checkpoint
+        if cfg.experiment.save_checkpoints and epoch % cfg.training.save_interval == 0:
+            checkpoint_path = output_dir / "checkpoints" / f"checkpoint_epoch_{epoch}.pth"
+            save_checkpoint(model, optimizer, epoch, val_loss, str(checkpoint_path))
+        
+        # Plot if requested
+        if cfg.experiment.plot_frequency > 0 and epoch % cfg.experiment.plot_frequency == 0:
+            plot_loss_curves(
+                train_losses, val_losses,
+                save_path=str(output_dir / "plots" / f"loss_epoch_{epoch}.png")
+            )
+            
+            if val_mses:
+                # Calculate train MSE for plotting
+                train_mse = train_loss  # Approximation if using MSE loss
+                train_mses.append(train_mse)
+                plot_mse_comparison(
+                    train_mses, val_mses,
+                    save_path=str(output_dir / "plots" / f"mse_epoch_{epoch}.png")
+                )
+        
+        # Early stopping check
+        if early_stopping is not None:
+            if early_stopping(val_loss):
+                logger.info(f"Early stopping at epoch {epoch}")
+                break
+    
+    total_time = time.time() - start_time
+    logger.info("=" * 80)
+    logger.info(f"Training complete! Total time: {total_time:.2f}s")
+    logger.info(f"Best epoch: {best_epoch} (Val Loss: {best_val_loss:.6f})")
+    logger.info("=" * 80)
+    
+    # Update database with final metrics
+    db.update_experiment(
+        run_name,
+        train_loss_final=train_losses[-1],
+        val_loss_final=val_losses[-1],
+        val_mse=val_mses[-1],
+        best_epoch=best_epoch,
+        total_epochs=epoch,
+        training_time_seconds=total_time
+    )
+    
+    # Save final TorchScript model
+    logger.info("Converting to TorchScript...")
+    torchscript_path = output_dir / "model_submission.pt"
+    save_torchscript(model, str(torchscript_path), verify=True)
+    
+    # Update database with model size
+    model_size_mb = torchscript_path.stat().st_size / (1024 * 1024)
+    db.update_experiment(
+        run_name,
+        model_size_mb=model_size_mb,
+        torchscript_path=str(torchscript_path)
+    )
+    
+    # Final evaluation
+    logger.info("Performing final evaluation...")
+    eval_metrics = evaluate_model(
+        model, train_loader, val_loader,
+        str(torchscript_path), device
+    )
+    
+    # Update database with eval metrics
+    db.update_experiment(run_name, train_mse=eval_metrics['train_mse'])
+    
+    # Final plots
+    if cfg.experiment.plot_frequency > 0:
+        plot_loss_curves(
+            train_losses, val_losses,
+            save_path=str(output_dir / "plots" / "loss_final.png")
+        )
+        
+        if val_mses:
+            plot_mse_comparison(
+                train_mses, val_mses,
+                save_path=str(output_dir / "plots" / "mse_final.png")
+            )
+    
+    # Save reconstructions
+    if cfg.experiment.save_reconstructions:
+        plot_reconstructions(
+            model, val_loader, device=device,
+            num_samples=cfg.experiment.num_reconstruction_samples,
+            save_path=str(output_dir / "plots" / "reconstructions.png")
+        )
+    
+    # Auto-submit if requested
+    if cfg.server.auto_submit:
+        logger.info("=" * 80)
+        logger.info("Auto-submitting to server...")
+        logger.info("=" * 80)
+        
+        server_api = ServerAPI(
+            token=cfg.server.token,
+            team_name=cfg.server.team_name,
+            server_url=cfg.server.url
+        )
+        
+        # Submit
+        result = server_api.submit_model(
+            str(torchscript_path),
+            max_retries=cfg.server.max_retries
+        )
+        
+        if result and result.get('success'):
+            attempt_num = result.get('attempt')
+            logger.info(f"✅ Submission successful! Attempt #{attempt_num}")
+            
+            # Update database
+            db.update_experiment(
+                run_name,
+                server_submission_id=attempt_num,
+                server_status='pending'
+            )
+            
+            # Wait for evaluation if requested
+            if cfg.server.wait_for_evaluation:
+                logger.info("Waiting for server evaluation...")
+                eval_result = server_api.wait_for_evaluation(
+                    timeout=cfg.server.evaluation_timeout,
+                    check_interval=30
+                )
+                
+                if eval_result:
+                    # Try to get detailed metrics from leaderboard
+                    metrics = server_api.get_metrics_from_leaderboard()
+                    
+                    if metrics:
+                        logger.info("📊 Server metrics:")
+                        logger.info(f"  Rank: #{metrics['server_rank']}")
+                        logger.info(f"  Weighted Score: {metrics['server_weighted_score']:.4f}")
+                        logger.info(f"  Full MSE: {metrics['server_full_mse']:.6f}")
+                        logger.info(f"  ROI MSE: {metrics['server_roi_mse']:.6f}")
+                        logger.info(f"  Latent Dim: {metrics['server_latent_dim']}")
+                        
+                        # Update database
+                        db.update_experiment(run_name, **metrics)
+                    else:
+                        logger.warning("Could not retrieve detailed metrics from leaderboard")
+        else:
+            error = result.get('error', 'Unknown error') if result else 'Unknown error'
+            logger.error(f"❌ Submission failed: {error}")
+    
+    # Close database
+    db.close()
+    
+    logger.info("=" * 80)
+    logger.info(f"Run complete! Results saved to: {output_dir}")
+    logger.info("=" * 80)
+
+
+if __name__ == "__main__":
+    main()
+

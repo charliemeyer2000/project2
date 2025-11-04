@@ -1,0 +1,22 @@
+# @package _global_
+
+# Strong augmentation - aggressive but realistic
+# Good for: Preventing overfitting, robust feature learning
+
+data:
+  augment: true
+  augmentation_strength: strong
+
+# Strong includes (traffic light optimized):
+# - Aggressive color jitter: brightness ±40%, contrast ±40%, saturation ±30%
+#   (simulates: extreme lighting, harsh weather - still NO HUE!)
+# - Small rotation (±3°) - realistic camera tilt
+# - Translation (±8%) - larger camera position variations
+# - Zoom (90-110%) - wider range of distances
+# - Very mild perspective distortion (5%, 20% probability) - lens effects
+#
+# Still AVOIDS:
+# - NO horizontal flips (driving context matters)
+# - NO hue changes (CRITICAL: red/yellow/green must stay accurate!)
+# - NO large rotations (traffic lights are vertical structures)
+

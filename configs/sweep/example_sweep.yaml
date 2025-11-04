@@ -1,0 +1,31 @@
+# Example sweep configuration for grid search
+
+# Base arguments to pass to all runs
+base_args:
+  - "server.auto_submit=false"
+  - "experiment.plot_frequency=0"  # Disable intermediate plots
+  - "training.epochs=15"
+
+# Parameter grid
+parameters:
+  # Latent dimension sweep
+  model.latent_dim:
+    - 8
+    - 16
+    - 32
+    - 64
+  
+  # Learning rate sweep
+  training.lr:
+    - 0.001
+    - 0.002
+    - 0.003
+  
+  # Batch size sweep
+  data.batch_size:
+    - 32
+    - 64
+    - 128
+
+# This will generate 4 * 3 * 3 = 36 runs
+
