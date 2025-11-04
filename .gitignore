@@ -1,9 +1,38 @@
-# Python
+# Dataset (large files)
+data/
+dataset/
+train_dataset/
+training_dataset/
+*.zip
+
+# Model outputs and checkpoints
+outputs/
+checkpoints/
+models/*.pth
+models/*.pt
+*.pth
+*.pt
+audit_output/
+
+# Database (experiment tracking - regenerated on each machine)
+experiments/
+*.db
+*.db-journal
+
+# Python virtual environment (uv/venv)
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Distribution / packaging
 build/
 develop-eggs/
 dist/
@@ -16,55 +45,79 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+coverage.xml
+*.cover
+*.log
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
-# PyTorch
-*.pth
-*.pt
-!**/configs/**/*.pt
+# IPython
+profile_default/
+ipython_config.py
 
-# Hydra
-outputs/
-multirun/
-.hydra/
+# pyenv
+.python-version
 
-# Data
-data/
-dataset/
-*.zip
-*.tar.gz
+# Environment variables
+.env
+.env.local
 
-# Database
-experiments/runs.db
-experiments/runs.db-journal
-
-# Reports (auto-generated - can be regenerated)
-EXPERIMENTS_REPORT.md
-
-# Logs
-*.log
-logs/
-
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
-Thumbs.db
+
+# Logs
+*.log
+app.log
+*.log.*
+
+# Hydra outputs (already in outputs/)
+multirun/
 
 # Temporary files
+*.tmp
+*.temp
 tmp/
 temp/
-*.tmp
 
-# UV
-.venv/
+# Large model files from old experiments
+old/
+big_run.ipynb
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Thumbnails
+Thumbs.db
+
+# Lock files (uv generates these, but can be committed for reproducibility)
+# Uncomment the next line if you want to ignore lock files
+# uv.lock
