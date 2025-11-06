@@ -368,9 +368,16 @@ Training on both a cluster AND your local machine? Use **cloud PostgreSQL** for 
 ### Setup (One-time, 2 minutes)
 
 ```bash
-# 1. Get a free Postgres database (see POSTGRES_SETUP.md for providers)
-# 2. Add to your ~/.bashrc or ~/.zshrc on ALL machines:
-export DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+# 1. Get a free Postgres database:
+#    - Neon: https://neon.tech (recommended)
+#    - Supabase: https://supabase.com
+#    - Railway: https://railway.app
+
+# 2. On EACH machine (local + cluster), create a .env file:
+cd ~/path/to/project2
+cat > .env << 'EOF'
+DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
+EOF
 
 # 3. That's it! No more syncing databases.
 ```
@@ -380,11 +387,11 @@ export DATABASE_URL="postgresql://user:pass@host:5432/dbname"
 ✅ **Single source of truth** - all machines write to same database  
 ✅ **No syncing** - real-time updates from anywhere  
 ✅ **Same commands** - works identically on cluster and local  
-✅ **Automatic fallback** - still uses SQLite if `DATABASE_URL` not set
+✅ **Automatic fallback** - still uses SQLite if `.env` not present  
+✅ **Git-safe** - `.env` is gitignored, credentials never committed
 
-**Details:** See [`POSTGRES_SETUP.md`](POSTGRES_SETUP.md) for step-by-step instructions
-
-**Without cloud DB?** Use local SQLite with `experiment.db_path=/tmp/runs.db` on cluster (avoids network filesystem issues)
+**Without cloud DB?** Just skip the `.env` file. Local SQLite will be used automatically (`experiments/runs.db`).  
+**On cluster with network filesystem?** Use local scratch: `experiment.db_path=/tmp/runs.db`
 
 ## 📚 Documentation
 

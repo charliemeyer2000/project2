@@ -7,6 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 import pandas as pd
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Try to import psycopg2 for Postgres support
 try:

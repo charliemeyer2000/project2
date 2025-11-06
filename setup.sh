@@ -105,13 +105,36 @@ if [ "$NUM_IMAGES" -lt 1000 ]; then
 fi
 echo "✅ Dataset verified: $NUM_IMAGES images"
 
-# 3. Create necessary directories
+# 3. Setup .env file for database
+echo ""
+echo "⚙️  Setting up database configuration..."
+if [ ! -f ".env" ]; then
+    echo "⚠️  No .env file found!"
+    echo ""
+    echo "For multi-machine training (cluster + local), create a .env file:"
+    echo "  cp .env.example .env"
+    echo "  # Edit .env and add your PostgreSQL connection string"
+    echo ""
+    echo "Without .env, experiments will use local SQLite (experiments/runs.db)"
+    echo ""
+    read -p "Press Enter to continue with SQLite, or Ctrl+C to exit and set up .env..."
+else
+    echo "✅ Found .env file"
+    # Check if DATABASE_URL is set
+    if grep -q "^DATABASE_URL=" .env 2>/dev/null; then
+        echo "✅ DATABASE_URL configured - will use PostgreSQL"
+    else
+        echo "⚠️  No DATABASE_URL in .env - will use SQLite"
+    fi
+fi
+
+# 4. Create necessary directories
 echo ""
 echo "📁 Creating output directories..."
 mkdir -p experiments
 mkdir -p outputs
 
-# 4. Test device detection
+# 5. Test device detection
 echo ""
 echo "🔍 Testing device detection..."
 uv run python -c "
