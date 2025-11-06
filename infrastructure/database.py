@@ -1,42 +1,81 @@
-"""SQLite database for experiment tracking."""
+"""Database for experiment tracking (SQLite or PostgreSQL)."""
 
 import sqlite3
 import json
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import pandas as pd
+
+# Try to import psycopg2 for Postgres support
+try:
+    import psycopg2
+    import psycopg2.extras
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
 
 
 class ExperimentDatabase:
-    """Manage experiment tracking in SQLite database."""
+    """Manage experiment tracking in SQLite or PostgreSQL database.
+    
+    Automatically uses PostgreSQL if DATABASE_URL environment variable is set,
+    otherwise falls back to SQLite.
+    """
     
     def __init__(self, db_path: str = "experiments/runs.db"):
         """Initialize database connection.
         
         Args:
-            db_path: Path to SQLite database file
+            db_path: Path to SQLite database file (ignored if DATABASE_URL is set)
         """
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.db_path))
-        self.conn.row_factory = sqlite3.Row
+        # Check for DATABASE_URL environment variable
+        database_url = os.getenv("DATABASE_URL")
+        
+        if database_url and POSTGRES_AVAILABLE:
+            self.backend = "postgres"
+            self.conn = psycopg2.connect(database_url)
+            self.db_path = database_url  # Store for reference
+            print(f"✅ Connected to PostgreSQL database")
+        else:
+            if database_url and not POSTGRES_AVAILABLE:
+                print("⚠️  DATABASE_URL set but psycopg2 not installed. Falling back to SQLite.")
+            self.backend = "sqlite"
+            self.db_path = Path(db_path)
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.conn = sqlite3.connect(str(self.db_path))
+            self.conn.row_factory = sqlite3.Row
+            print(f"✅ Connected to SQLite database: {self.db_path}")
+        
         self._create_tables()
+    
+    def _get_placeholder(self):
+        """Get the correct placeholder for parameterized queries."""
+        return "%s" if self.backend == "postgres" else "?"
     
     def _create_tables(self):
         """Create database tables if they don't exist."""
         cursor = self.conn.cursor()
         
+        # Choose correct syntax for primary key based on backend
+        if self.backend == "postgres":
+            pk_syntax = "SERIAL PRIMARY KEY"
+            text_type = "TEXT"
+        else:
+            pk_syntax = "INTEGER PRIMARY KEY AUTOINCREMENT"
+            text_type = "TEXT"
+        
         # Experiments table
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS experiments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_name TEXT UNIQUE NOT NULL,
-                timestamp TEXT NOT NULL,
-                config_json TEXT NOT NULL,
+                id {pk_syntax},
+                run_name {text_type} UNIQUE NOT NULL,
+                timestamp {text_type} NOT NULL,
+                config_json {text_type} NOT NULL,
                 
                 -- Model info
-                model_architecture TEXT,
+                model_architecture {text_type},
                 latent_dim INTEGER,
                 model_size_mb REAL,
                 num_parameters INTEGER,
@@ -52,45 +91,45 @@ class ExperimentDatabase:
                 
                 -- Server metrics (NULL until submitted)
                 server_submission_id INTEGER,
-                server_status TEXT,
+                server_status {text_type},
                 server_weighted_score REAL,
                 server_full_mse REAL,
                 server_roi_mse REAL,
                 server_latent_dim INTEGER,
                 server_model_size_mb REAL,
                 server_rank INTEGER,
-                server_submitted_at TEXT,
+                server_submitted_at {text_type},
                 
                 -- Paths
-                checkpoint_path TEXT,
-                torchscript_path TEXT,
-                config_path TEXT,
-                log_path TEXT,
-                output_dir TEXT
+                checkpoint_path {text_type},
+                torchscript_path {text_type},
+                config_path {text_type},
+                log_path {text_type},
+                output_dir {text_type}
             )
         """)
         
         # Leaderboard snapshots table
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
+                id {pk_syntax},
+                timestamp {text_type} NOT NULL,
                 rank INTEGER NOT NULL,
-                team TEXT NOT NULL,
+                team {text_type} NOT NULL,
                 weighted_score REAL NOT NULL,
                 latent_dim INTEGER NOT NULL,
                 full_mse REAL NOT NULL,
                 roi_mse REAL NOT NULL,
                 model_size_mb REAL NOT NULL,
-                submitted_at TEXT NOT NULL
+                submitted_at {text_type} NOT NULL
             )
         """)
         
         # Training history table (for epoch-by-epoch tracking)
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS training_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_name TEXT NOT NULL,
+                id {pk_syntax},
+                run_name {text_type} NOT NULL,
                 epoch INTEGER NOT NULL,
                 train_loss REAL,
                 val_loss REAL,
@@ -116,15 +155,21 @@ class ExperimentDatabase:
         cursor = self.conn.cursor()
         timestamp = datetime.now().isoformat()
         config_json = json.dumps(config, indent=2)
+        ph = self._get_placeholder()
         
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 INSERT INTO experiments (run_name, timestamp, config_json)
-                VALUES (?, ?, ?)
+                VALUES ({ph}, {ph}, {ph})
             """, (run_name, timestamp, config_json))
             self.conn.commit()
-            return cursor.lastrowid
-        except sqlite3.IntegrityError:
+            
+            if self.backend == "postgres":
+                cursor.execute("SELECT lastval()")
+                return cursor.fetchone()[0]
+            else:
+                return cursor.lastrowid
+        except (sqlite3.IntegrityError, psycopg2.IntegrityError if POSTGRES_AVAILABLE else Exception):
             raise ValueError(f"Experiment '{run_name}' already exists!")
     
     def update_experiment(self, run_name: str, **kwargs):
@@ -137,15 +182,16 @@ class ExperimentDatabase:
         if not kwargs:
             return
         
+        ph = self._get_placeholder()
         # Build SET clause dynamically
-        set_clause = ", ".join(f"{key} = ?" for key in kwargs.keys())
+        set_clause = ", ".join(f"{key} = {ph}" for key in kwargs.keys())
         values = list(kwargs.values()) + [run_name]
         
         cursor = self.conn.cursor()
         cursor.execute(f"""
             UPDATE experiments
             SET {set_clause}
-            WHERE run_name = ?
+            WHERE run_name = {ph}
         """, values)
         self.conn.commit()
     
@@ -166,10 +212,11 @@ class ExperimentDatabase:
             epoch_time: Time taken for epoch (optional)
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        ph = self._get_placeholder()
+        cursor.execute(f"""
             INSERT INTO training_history 
             (run_name, epoch, train_loss, val_loss, train_mse, val_mse, epoch_time_seconds)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
         """, (run_name, epoch, train_loss, val_loss, train_mse, val_mse, epoch_time))
         self.conn.commit()
     
@@ -183,9 +230,16 @@ class ExperimentDatabase:
             Experiment dict or None if not found
         """
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM experiments WHERE run_name = ?", (run_name,))
+        ph = self._get_placeholder()
+        cursor.execute(f"SELECT * FROM experiments WHERE run_name = {ph}", (run_name,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if row:
+            # Convert to dict (works for both sqlite3.Row and psycopg2 dict cursor)
+            if self.backend == "postgres":
+                return dict(row) if isinstance(row, dict) else {k: row[i] for i, k in enumerate(['id', 'run_name', 'timestamp', 'config_json', 'model_architecture', 'latent_dim', 'model_size_mb', 'num_parameters', 'train_loss_final', 'val_loss_final', 'train_mse', 'val_mse', 'best_epoch', 'total_epochs', 'training_time_seconds', 'server_submission_id', 'server_status', 'server_weighted_score', 'server_full_mse', 'server_roi_mse', 'server_latent_dim', 'server_model_size_mb', 'server_rank', 'server_submitted_at', 'checkpoint_path', 'torchscript_path', 'config_path', 'log_path', 'output_dir'])}
+            else:
+                return dict(row)
+        return None
     
     def get_all_experiments(self) -> pd.DataFrame:
         """Get all experiments as DataFrame.
@@ -204,8 +258,9 @@ class ExperimentDatabase:
         Returns:
             DataFrame with epoch-by-epoch history
         """
+        ph = self._get_placeholder()
         return pd.read_sql_query(
-            "SELECT * FROM training_history WHERE run_name = ? ORDER BY epoch",
+            f"SELECT * FROM training_history WHERE run_name = {ph} ORDER BY epoch",
             self.conn,
             params=(run_name,)
         )
@@ -218,13 +273,14 @@ class ExperimentDatabase:
         """
         cursor = self.conn.cursor()
         timestamp = datetime.now().isoformat()
+        ph = self._get_placeholder()
         
         for entry in leaderboard_data:
-            cursor.execute("""
+            cursor.execute(f"""
                 INSERT INTO leaderboard_snapshots
                 (timestamp, rank, team, weighted_score, latent_dim, 
                  full_mse, roi_mse, model_size_mb, submitted_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (
                 timestamp,
                 entry['rank'],
@@ -249,8 +305,9 @@ class ExperimentDatabase:
             DataFrame with leaderboard history
         """
         if team_name:
+            ph = self._get_placeholder()
             return pd.read_sql_query(
-                "SELECT * FROM leaderboard_snapshots WHERE team = ? ORDER BY timestamp",
+                f"SELECT * FROM leaderboard_snapshots WHERE team = {ph} ORDER BY timestamp",
                 self.conn,
                 params=(team_name,)
             )
@@ -270,11 +327,12 @@ class ExperimentDatabase:
         Returns:
             DataFrame with top experiments
         """
+        ph = self._get_placeholder()
         return pd.read_sql_query(f"""
             SELECT * FROM experiments 
             WHERE {metric} IS NOT NULL
             ORDER BY {metric} DESC
-            LIMIT ?
+            LIMIT {ph}
         """, self.conn, params=(top_n,))
     
     def generate_run_name(self, prefix: str = "") -> str:
