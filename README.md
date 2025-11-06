@@ -227,6 +227,31 @@ python server_cli.py leaderboard --save-snapshot
 python sweep.py configs/sweep/example_sweep.yaml
 ```
 
+## 🛑 Interrupted Training? No Problem!
+
+If you cancel training early, you can still submit your best checkpoint:
+
+```bash
+# Export any checkpoint to TorchScript
+uv run python export_model.py outputs/2025-11-05/12-34-56/best_checkpoint.pth
+
+# Export and submit immediately
+uv run python export_model.py outputs/2025-11-05/12-34-56/best_checkpoint.pth --submit
+
+# Export, submit, and wait for results (updates database)
+uv run python export_model.py outputs/2025-11-05/12-34-56/best_checkpoint.pth \
+    --submit --wait --run-name attention_ld16_local_test
+
+# Specify custom output path
+uv run python export_model.py best_checkpoint.pth -o my_submission.pt
+```
+
+**Use cases:**
+- Training interrupted (Ctrl+C, cluster timeout, etc.)
+- Want to submit an intermediate checkpoint
+- Forgot to enable auto-submit
+- Testing older checkpoints
+
 ## 🎯 Tips for Success
 
 1. **Start small**: Train with default settings first to verify everything works
