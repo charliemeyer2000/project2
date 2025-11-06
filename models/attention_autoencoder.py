@@ -203,3 +203,4 @@ if __name__ == "__main__":
     print(f"Trainable parameters: {trainable_params:,}")
     print(f"Estimated size: {total_params * 4 / (1024**2):.2f} MB (fp32)")
 
+

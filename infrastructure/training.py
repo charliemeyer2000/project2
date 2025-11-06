@@ -52,7 +52,8 @@ def train_epoch(model: nn.Module, dataloader, optimizer,
                 criterion, device: str = "cuda",
                 mixed_precision: bool = False,
                 log_interval: int = 20,
-                epoch: int = 0) -> Dict[str, float]:
+                epoch: int = 0,
+                gpu_augmentation: Optional[nn.Module] = None) -> Dict[str, float]:
     """Train for one epoch.
     
     Args:
@@ -64,6 +65,7 @@ def train_epoch(model: nn.Module, dataloader, optimizer,
         mixed_precision: Use automatic mixed precision
         log_interval: Log every N batches
         epoch: Current epoch number
+        gpu_augmentation: Optional GPU augmentation module (Kornia)
         
     Returns:
         Dict with training metrics
@@ -85,6 +87,10 @@ def train_epoch(model: nn.Module, dataloader, optimizer,
             x = batch
         
         x = x.to(device)
+        
+        # Apply GPU augmentation if provided (MUCH faster than CPU augmentation!)
+        if gpu_augmentation is not None:
+            x = gpu_augmentation(x)
         
         # Forward pass
         if mixed_precision:

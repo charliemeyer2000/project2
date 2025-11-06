@@ -24,6 +24,7 @@ from infrastructure.checkpoint import save_torchscript, save_checkpoint
 from infrastructure.visualization import (
     plot_loss_curves, plot_mse_comparison, plot_reconstructions
 )
+from infrastructure.gpu_augmentation import GPUAugmentation, is_gpu_augmentation_supported
 from models import get_model as create_model, list_models
 
 logging.basicConfig(
@@ -86,6 +87,8 @@ def main(cfg: DictConfig):
     print_device_info(device)
     
     # Create dataloaders
+    # NOTE: We disable CPU augmentation in dataloaders and use GPU augmentation instead!
+    # This is MUCH faster, especially with high-end GPUs like A100
     logger.info("Creating dataloaders...")
     train_loader, val_loader = create_dataloaders(
         data_root=cfg.data.data_root,
@@ -97,7 +100,7 @@ def main(cfg: DictConfig):
         pin_memory=cfg.data.pin_memory,
         seed=cfg.data.seed,
         shuffle=cfg.data.shuffle,
-        augment=cfg.data.augment,
+        augment=False,  # Always False - we use GPU augmentation instead!
         augmentation_strength=cfg.data.augmentation_strength
     )
     
@@ -116,6 +119,54 @@ def main(cfg: DictConfig):
         latent_dim=cfg.model.latent_dim,
         num_parameters=num_params
     )
+    
+    # Create GPU augmentation if enabled and supported
+    gpu_augmentation = None
+    if cfg.data.augment:
+        if is_gpu_augmentation_supported(device):
+            logger.info("Creating GPU-accelerated augmentation pipeline...")
+            try:
+                gpu_augmentation = GPUAugmentation(
+                    strength=cfg.data.augmentation_strength,
+                    device=device
+                ).to(device)
+                logger.info(f"✅ GPU augmentation enabled (strength: {cfg.data.augmentation_strength})")
+            except Exception as e:
+                logger.error(f"❌ Failed to create GPU augmentation: {e}")
+                logger.warning("⚠️  Falling back to CPU augmentation in DataLoader...")
+                # Recreate dataloaders with CPU augmentation
+                train_loader, val_loader = create_dataloaders(
+                    data_root=cfg.data.data_root,
+                    img_size=cfg.data.img_size,
+                    grayscale=cfg.data.grayscale,
+                    batch_size=cfg.data.batch_size,
+                    train_split=cfg.data.train_split,
+                    num_workers=cfg.data.num_workers,
+                    pin_memory=cfg.data.pin_memory,
+                    seed=cfg.data.seed,
+                    shuffle=cfg.data.shuffle,
+                    augment=True,  # Enable CPU augmentation
+                    augmentation_strength=cfg.data.augmentation_strength
+                )
+        else:
+            logger.warning(f"⚠️  GPU augmentation not supported on {device}")
+            logger.info("⚠️  Falling back to CPU augmentation in DataLoader...")
+            # Recreate dataloaders with CPU augmentation
+            train_loader, val_loader = create_dataloaders(
+                data_root=cfg.data.data_root,
+                img_size=cfg.data.img_size,
+                grayscale=cfg.data.grayscale,
+                batch_size=cfg.data.batch_size,
+                train_split=cfg.data.train_split,
+                num_workers=cfg.data.num_workers,
+                pin_memory=cfg.data.pin_memory,
+                seed=cfg.data.seed,
+                shuffle=cfg.data.shuffle,
+                augment=True,  # Enable CPU augmentation
+                augmentation_strength=cfg.data.augmentation_strength
+            )
+    else:
+        logger.info("ℹ️  No augmentation (set data.augment=true to enable augmentation)")
     
     # Create optimizer
     optimizer = get_optimizer(
@@ -170,7 +221,8 @@ def main(cfg: DictConfig):
             device=device,
             mixed_precision=cfg.training.mixed_precision,
             log_interval=cfg.training.log_interval,
-            epoch=epoch
+            epoch=epoch,
+            gpu_augmentation=gpu_augmentation
         )
         
         # Validate
