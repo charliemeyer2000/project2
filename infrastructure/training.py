@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 import time
 from typing import Optional, Callable, Dict, Any
 import logging
@@ -75,7 +75,7 @@ def train_epoch(model: nn.Module, dataloader, optimizer,
     total_loss = 0.0
     total_samples = 0
     
-    scaler = GradScaler() if mixed_precision else None
+    scaler = GradScaler(device) if mixed_precision else None
     
     pbar = tqdm(dataloader, desc=f"Epoch {epoch}", leave=False)
     
@@ -94,7 +94,7 @@ def train_epoch(model: nn.Module, dataloader, optimizer,
         
         # Forward pass
         if mixed_precision:
-            with autocast():
+            with autocast(device):
                 reconstructed = model(x)
                 loss = criterion(reconstructed, x)
         else:
@@ -165,7 +165,7 @@ def validate_epoch(model: nn.Module, dataloader, criterion,
         
         # Forward pass
         if mixed_precision:
-            with autocast():
+            with autocast(device):
                 reconstructed = model(x)
                 loss = criterion(reconstructed, x)
                 mse = mse_criterion(reconstructed, x)

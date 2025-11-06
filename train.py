@@ -250,6 +250,9 @@ def main(cfg: DictConfig):
         val_losses.append(val_loss)
         val_mses.append(val_mse)
         
+        # Approximate train MSE for plotting (works well if using MSE-based loss)
+        train_mses.append(train_loss)
+        
         logger.info(
             f"Epoch {epoch}/{cfg.training.epochs} | "
             f"Train Loss: {train_loss:.6f} | "
@@ -291,10 +294,7 @@ def main(cfg: DictConfig):
                 save_path=str(output_dir / "plots" / f"loss_epoch_{epoch}.png")
             )
             
-            if val_mses:
-                # Calculate train MSE for plotting
-                train_mse = train_loss  # Approximation if using MSE loss
-                train_mses.append(train_mse)
+            if val_mses and train_mses:
                 plot_mse_comparison(
                     train_mses, val_mses,
                     save_path=str(output_dir / "plots" / f"mse_epoch_{epoch}.png")
@@ -353,7 +353,7 @@ def main(cfg: DictConfig):
             save_path=str(output_dir / "plots" / "loss_final.png")
         )
         
-        if val_mses:
+        if val_mses and train_mses:
             plot_mse_comparison(
                 train_mses, val_mses,
                 save_path=str(output_dir / "plots" / "mse_final.png")
