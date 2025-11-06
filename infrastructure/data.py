@@ -258,13 +258,15 @@ def create_dataloaders(data_root: str, img_size: int = 256,
         num_workers = probe_workers()
         logger.info(f"Auto-detected {num_workers} workers")
     
-    # Create dataloaders
+    # Create dataloaders with optimizations for fast GPUs
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=pin_memory,
+        persistent_workers=True if num_workers > 0 else False,  # Keep workers alive between epochs
+        prefetch_factor=4 if num_workers > 0 else None  # Prefetch 4 batches per worker
     )
     
     val_loader = DataLoader(
@@ -272,7 +274,9 @@ def create_dataloaders(data_root: str, img_size: int = 256,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=pin_memory,
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=4 if num_workers > 0 else None
     )
     
     logger.info(f"Created dataloaders: {len(train_loader)} train batches, "
