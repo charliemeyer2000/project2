@@ -1,0 +1,10 @@
+# Attention Autoencoder Configuration
+# Designed to beat rank #1 with channel attention and better capacity
+# Target: ~6 MB, LD=16, MSE ~0.003-0.004
+
+architecture: attention
+latent_dim: 16
+
+# No additional params needed - attention model is self-contained
+# Size: ~6.37 MB, optimized for traffic light reconstruction
+

@@ -2,11 +2,13 @@
 
 from .baseline import BaselineAutoencoder
 from .efficient import EfficientAutoencoder
+from .attention_autoencoder import AttentionAutoencoder
 
 # Model registry for easy swapping
 MODEL_REGISTRY = {
     'baseline': BaselineAutoencoder,
     'efficient': EfficientAutoencoder,
+    'attention': AttentionAutoencoder,
 }
 
 
@@ -42,6 +44,7 @@ def list_models():
 __all__ = [
     'BaselineAutoencoder',
     'EfficientAutoencoder',
+    'AttentionAutoencoder',
     'MODEL_REGISTRY',
     'get_model',
     'list_models',
