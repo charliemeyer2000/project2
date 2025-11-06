@@ -348,3 +348,35 @@ The infrastructure automatically detects and optimizes for Apple Silicon (M1/M2/
 - Sets optimal environment variables
 - No manual configuration needed - just `uv run train.py`!
 
+## 🔄 Multi-Machine Workflow (Cluster + Local)
+
+If you're training on a cluster AND your local machine, you'll have separate databases. Here's how to manage them:
+
+### Option 1: Keep Separate Databases (Simplest)
+```bash
+# Analyze cluster runs (on cluster)
+uv run python analyze.py
+
+# Analyze local runs (on local)
+uv run python analyze.py
+```
+
+### Option 2: Merge Databases (Recommended)
+```bash
+# 1. On cluster, after training finishes, copy database back
+scp user@cluster:/tmp/runs_abs6bd.db ./experiments/runs_cluster.db
+
+# 2. On local machine, merge into main database
+uv run python merge_databases.py experiments/runs_cluster.db experiments/runs.db --dry-run  # Preview
+uv run python merge_databases.py experiments/runs_cluster.db experiments/runs.db             # Actually merge
+
+# 3. Now analyze the merged database
+uv run python analyze.py
+```
+
+**Key Points:**
+- On cluster: Use `experiment.db_path=/tmp/runs_abc123.db` to avoid SQLite issues on network filesystems
+- After training: Copy cluster DB to local machine
+- Use `merge_databases.py` to combine databases without duplicates
+- The script automatically skips duplicate experiments (by `run_name`)
+
