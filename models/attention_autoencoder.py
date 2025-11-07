@@ -28,6 +28,8 @@ class ChannelAttention(nn.Module):
 class AttentionEncoder(nn.Module):
     """Encoder with channel attention for better feature learning."""
     
+    __constants__ = ['latent_dim']
+    
     def __init__(self, latent_dim: int = 16):
         super().__init__()
         self.latent_dim = latent_dim
@@ -87,6 +89,8 @@ class AttentionEncoder(nn.Module):
 
 class AttentionDecoder(nn.Module):
     """Decoder with attention for better reconstruction."""
+    
+    __constants__ = ['latent_dim']
     
     def __init__(self, latent_dim: int = 16):
         super().__init__()
@@ -163,21 +167,22 @@ class AttentionAutoencoder(nn.Module):
     def __init__(self, latent_dim: int = 16, **kwargs):
         super().__init__()
         self.latent_dim = latent_dim
-        self.encoder = AttentionEncoder(latent_dim)
-        self.decoder = AttentionDecoder(latent_dim)
+        # Use 'enc' and 'dec' naming to match baseline for server compatibility
+        self.enc = AttentionEncoder(latent_dim)
+        self.dec = AttentionDecoder(latent_dim)
     
     def forward(self, x):
-        z = self.encoder(x)
-        reconstructed = self.decoder(z)
+        z = self.enc(x)
+        reconstructed = self.dec(z)
         return reconstructed
     
     def encode(self, x):
         """Encode input to latent space."""
-        return self.encoder(x)
+        return self.enc(x)
     
     def decode(self, z):
         """Decode from latent space."""
-        return self.decoder(z)
+        return self.dec(z)
     
     def get_latent_dim(self):
         """Return latent dimension."""
