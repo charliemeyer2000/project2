@@ -157,6 +157,9 @@ class AttentionAutoencoder(nn.Module):
         latent_dim: Dimensionality of latent space (default: 16)
     """
     
+    # Mark latent_dim as a TorchScript constant so it's preserved in exported models
+    __constants__ = ['latent_dim']
+    
     def __init__(self, latent_dim: int = 16, **kwargs):
         super().__init__()
         self.latent_dim = latent_dim

@@ -139,6 +139,9 @@ class EfficientAutoencoder(nn.Module):
     - LD=32: ~5-6 MB
     """
     
+    # Mark latent_dim as a TorchScript constant so it's preserved in exported models
+    __constants__ = ['latent_dim', 'channels', 'img_size']
+    
     def __init__(self, channels: int = 3, latent_dim: int = 16, 
                  img_size: int = 256, base_channels: int = 32):
         """Initialize efficient autoencoder.

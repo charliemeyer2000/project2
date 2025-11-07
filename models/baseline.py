@@ -65,6 +65,9 @@ class BaselineAutoencoder(nn.Module):
     easy integration with our infrastructure.
     """
     
+    # Mark latent_dim as a TorchScript constant so it's preserved in exported models
+    __constants__ = ['latent_dim', 'channels', 'img_size']
+    
     def __init__(self, channels: int = 3, latent_dim: int = 32, img_size: int = 256):
         """Initialize baseline autoencoder.
         
