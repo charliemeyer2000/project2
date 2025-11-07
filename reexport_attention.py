@@ -17,7 +17,16 @@ checkpoint = torch.load(checkpoint_path, map_location='cpu')
 # Create model with CORRECT architecture
 print("\n🔨 Creating attention model with latent_dim=16...")
 model = get_model('attention', latent_dim=16)
-model.load_state_dict(checkpoint['model_state_dict'])
+
+# Remap old keys (encoder/decoder) to new keys (enc/dec)
+print("🔧 Remapping checkpoint keys (encoder→enc, decoder→dec)...")
+state_dict = checkpoint['model_state_dict']
+new_state_dict = {}
+for key, value in state_dict.items():
+    new_key = key.replace('encoder.', 'enc.').replace('decoder.', 'dec.')
+    new_state_dict[new_key] = value
+
+model.load_state_dict(new_state_dict)
 model.eval()
 
 # Verify latent_dim is accessible (all 3 patterns the server checks)
