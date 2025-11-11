@@ -5,6 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 import torch
+from omegaconf import OmegaConf
 
 from models import get_model
 from infrastructure.checkpoint import save_torchscript
@@ -126,7 +127,16 @@ def export_checkpoint(checkpoint_path: str, output_path: str = None,
     # Submit if requested
     if submit:
         logger.info(f"\n🚀 Submitting to server...")
-        api = ServerAPI()
+        
+        # Load server config
+        config_dir = Path(__file__).parent / "configs"
+        server_cfg = OmegaConf.load(config_dir / "server" / "default.yaml")
+        
+        api = ServerAPI(
+            token=server_cfg.token,
+            team_name=server_cfg.team_name,
+            server_url=server_cfg.url
+        )
         
         success = api.submit_model(str(output_path))
         
