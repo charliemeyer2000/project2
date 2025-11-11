@@ -128,14 +128,14 @@ def export_checkpoint(checkpoint_path: str, output_path: str = None,
     if submit:
         logger.info(f"\n🚀 Submitting to server...")
         
-        # Load server config
-        config_dir = Path(__file__).parent / "configs"
-        server_cfg = OmegaConf.load(config_dir / "server" / "default.yaml")
+        # Load server config from main config
+        config_path = Path(__file__).parent / "configs" / "config.yaml"
+        cfg = OmegaConf.load(config_path)
         
         api = ServerAPI(
-            token=server_cfg.token,
-            team_name=server_cfg.team_name,
-            server_url=server_cfg.url
+            token=cfg.server.token,
+            team_name=cfg.server.team_name,
+            server_url=cfg.server.url
         )
         
         success = api.submit_model(str(output_path))
