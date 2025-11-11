@@ -8,7 +8,7 @@ data:
   img_size: 256
   grayscale: false
   batch_size: 64
-  num_workers: 2
+  num_workers: 4  # Increased for better parallelism (adjust based on your CPU cores)
   pin_memory: true
   train_split: 0.9
   shuffle: true
@@ -78,7 +78,7 @@ experiment:
   db_path: experiments/runs.db
   
   # Visualization
-  plot_frequency: 1
+  plot_frequency: 5  # Only plot every 5 epochs (saves TONS of time)
   save_reconstructions: true
   num_reconstruction_samples: 8
 

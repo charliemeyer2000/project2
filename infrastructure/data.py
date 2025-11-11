@@ -259,16 +259,16 @@ def create_dataloaders(data_root: str, img_size: int = 256,
         logger.info(f"Auto-detected {num_workers} workers")
     
     # Create dataloaders with optimizations for fast GPUs
-    # Note: persistent_workers disabled due to known PyTorch bug with pin_memory
-    # See: https://github.com/pytorch/pytorch/issues/91252
+    # persistent_workers=True keeps workers alive between epochs (MUCH faster!)
+    # prefetch_factor controls how many batches to load ahead
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        persistent_workers=False,  # Disabled due to PyTorch bug
-        prefetch_factor=2 if num_workers > 0 else None  # Reduced to prevent memory leaks
+        persistent_workers=(num_workers > 0),  # Keep workers alive between epochs
+        prefetch_factor=4 if num_workers > 0 else None  # Increased for better pipelining
     )
     
     val_loader = DataLoader(
@@ -277,8 +277,8 @@ def create_dataloaders(data_root: str, img_size: int = 256,
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        persistent_workers=False,  # Disabled due to PyTorch bug
-        prefetch_factor=2 if num_workers > 0 else None
+        persistent_workers=(num_workers > 0),  # Keep workers alive between epochs
+        prefetch_factor=4 if num_workers > 0 else None  # Increased for better pipelining
     )
     
     logger.info(f"Created dataloaders: {len(train_loader)} train batches, "
