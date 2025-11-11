@@ -16,6 +16,36 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def infer_architecture_from_state_dict(state_dict: dict) -> str:
+    """Infer model architecture from state_dict keys."""
+    keys = list(state_dict.keys())
+    
+    # Check for attention-specific keys
+    if any('fc.0.weight' in k or 'fc.2.weight' in k for k in keys):
+        return 'attention'
+    
+    # Check for depthwise separable convolutions (efficient model)
+    if any('depthwise' in k for k in keys):
+        return 'efficient'
+    
+    # Default to baseline
+    return 'baseline'
+
+
+def infer_latent_dim_from_state_dict(state_dict: dict) -> int:
+    """Infer latent dimension from state_dict."""
+    # Look for the encoder's final linear layer (fc) output dimension
+    if 'enc.fc.weight' in state_dict:
+        return state_dict['enc.fc.weight'].shape[0]
+    
+    # Fallback: look for decoder's first linear layer input dimension
+    if 'dec.fc.weight' in state_dict:
+        return state_dict['dec.fc.weight'].shape[1]
+    
+    # If not found, return default
+    return 32
+
+
 def export_checkpoint(checkpoint_path: str, output_path: str = None, 
                      submit: bool = False, wait: bool = False,
                      run_name: str = None) -> str:
@@ -47,12 +77,29 @@ def export_checkpoint(checkpoint_path: str, output_path: str = None,
     
     # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    state_dict = checkpoint['model_state_dict']
     
-    # Extract model info
+    # Extract model info from config (might be wrong!)
     config = checkpoint.get('config', {})
     model_config = config.get('model', {})
-    architecture = model_config.get('architecture', 'baseline')
-    latent_dim = model_config.get('latent_dim', 32)
+    config_architecture = model_config.get('architecture', 'baseline')
+    config_latent_dim = model_config.get('latent_dim', 32)
+    
+    # Infer actual architecture and latent_dim from state_dict
+    actual_architecture = infer_architecture_from_state_dict(state_dict)
+    actual_latent_dim = infer_latent_dim_from_state_dict(state_dict)
+    
+    # Warn if mismatch
+    if config_architecture != actual_architecture:
+        logger.warning(f"⚠️  Config says '{config_architecture}' but state_dict indicates '{actual_architecture}'")
+        logger.warning(f"   Using: {actual_architecture}")
+    
+    if config_latent_dim != actual_latent_dim:
+        logger.warning(f"⚠️  Config says LD={config_latent_dim} but state_dict indicates LD={actual_latent_dim}")
+        logger.warning(f"   Using: {actual_latent_dim}")
+    
+    architecture = actual_architecture
+    latent_dim = actual_latent_dim
     
     logger.info(f"   Architecture: {architecture}")
     logger.info(f"   Latent dim: {latent_dim}")
