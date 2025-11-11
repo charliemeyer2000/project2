@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import signal
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -20,7 +21,7 @@ from infrastructure.training import (
     get_loss_fn, get_optimizer, get_scheduler
 )
 from infrastructure.evaluation import evaluate_model
-from infrastructure.checkpoint import save_torchscript, save_checkpoint
+from infrastructure.checkpoint import save_torchscript, save_checkpoint, load_checkpoint
 from infrastructure.visualization import (
     plot_loss_curves, plot_mse_comparison, plot_reconstructions
 )
@@ -204,6 +205,56 @@ def main(cfg: DictConfig):
     
     best_val_loss = float('inf')
     best_epoch = 0
+    start_epoch = 1
+    
+    # Signal handler for graceful shutdown on interrupt
+    interrupt_received = False
+    
+    def signal_handler(signum, frame):
+        nonlocal interrupt_received
+        if not interrupt_received:
+            interrupt_received = True
+            logger.warning("=" * 80)
+            logger.warning("⚠️  Interrupt received! Saving recovery checkpoint...")
+            logger.warning("=" * 80)
+            # Save will happen after current epoch completes
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Resume from checkpoint if provided
+    if cfg.experiment.resume_from is not None:
+        logger.info("=" * 80)
+        logger.info(f"Resuming from checkpoint: {cfg.experiment.resume_from}")
+        logger.info("=" * 80)
+        
+        checkpoint = load_checkpoint(
+            cfg.experiment.resume_from,
+            model,
+            optimizer,
+            device
+        )
+        
+        if checkpoint:
+            start_epoch = checkpoint.get('epoch', 0) + 1
+            # Use best_val_loss from checkpoint if available, otherwise use current loss
+            best_val_loss = checkpoint.get('best_val_loss', checkpoint.get('loss', float('inf')))
+            best_epoch = checkpoint.get('best_epoch', checkpoint.get('epoch', 0))
+            
+            logger.info(f"✅ Resumed from epoch {checkpoint.get('epoch', 0)}")
+            logger.info(f"   Starting at epoch {start_epoch}")
+            logger.info(f"   Best val loss so far: {best_val_loss:.6f} (epoch {best_epoch})")
+            
+            # Restore training history if available
+            if 'train_losses' in checkpoint:
+                train_losses = checkpoint['train_losses']
+                val_losses = checkpoint['val_losses']
+                train_mses = checkpoint.get('train_mses', [])
+                val_mses = checkpoint.get('val_mses', [])
+                logger.info(f"   Restored training history ({len(train_losses)} epochs)")
+        else:
+            logger.error("Failed to load checkpoint, starting from scratch")
+            start_epoch = 1
     
     # Training loop
     logger.info("=" * 80)
@@ -212,7 +263,7 @@ def main(cfg: DictConfig):
     
     start_time = time.time()
     
-    for epoch in range(1, cfg.training.epochs + 1):
+    for epoch in range(start_epoch, cfg.training.epochs + 1):
         epoch_start = time.time()
         
         # Train
@@ -276,16 +327,31 @@ def main(cfg: DictConfig):
             best_epoch = epoch
             
             if cfg.experiment.save_best:
-                # Save checkpoint
-                checkpoint_path = output_dir / "checkpoints" / "best_checkpoint.pth"
-                save_checkpoint(model, optimizer, epoch, val_loss, 
-                              str(checkpoint_path))
-                logger.info(f"💾 Saved best checkpoint (epoch {epoch})")
+                # Save lightweight model checkpoint (just weights, no optimizer)
+                best_model_path = output_dir / "checkpoints" / "best_model.pth"
+                best_model_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'val_loss': val_loss,
+                }, best_model_path)
+                logger.info(f"💾 Saved best model (epoch {epoch}, val_loss: {val_loss:.6f})")
         
-        # Periodic checkpoint
+        # Periodic FULL checkpoint for recovery (optimizer state + training history)
         if cfg.experiment.save_checkpoints and epoch % cfg.training.save_interval == 0:
-            checkpoint_path = output_dir / "checkpoints" / f"checkpoint_epoch_{epoch}.pth"
-            save_checkpoint(model, optimizer, epoch, val_loss, str(checkpoint_path))
+            checkpoint_path = output_dir / "checkpoints" / f"recovery_epoch_{epoch}.pth"
+            save_checkpoint(
+                model, optimizer, epoch, val_loss, str(checkpoint_path),
+                additional_info={
+                    'train_losses': train_losses,
+                    'val_losses': val_losses,
+                    'train_mses': train_mses,
+                    'val_mses': val_mses,
+                    'best_val_loss': best_val_loss,
+                    'best_epoch': best_epoch
+                }
+            )
+            logger.info(f"💾 Saved recovery checkpoint (epoch {epoch})")
         
         # Plot if requested
         if cfg.experiment.plot_frequency > 0 and epoch % cfg.experiment.plot_frequency == 0:
@@ -299,6 +365,28 @@ def main(cfg: DictConfig):
                     train_mses, val_mses,
                     save_path=str(output_dir / "plots" / f"mse_epoch_{epoch}.png")
                 )
+        
+        # Check for interrupt signal
+        if interrupt_received:
+            logger.warning("=" * 80)
+            logger.warning("💾 Saving recovery checkpoint before exit...")
+            logger.warning("=" * 80)
+            interrupt_checkpoint_path = output_dir / "checkpoints" / "recovery_interrupt.pth"
+            save_checkpoint(
+                model, optimizer, epoch, val_loss, str(interrupt_checkpoint_path),
+                additional_info={
+                    'train_losses': train_losses,
+                    'val_losses': val_losses,
+                    'train_mses': train_mses,
+                    'val_mses': val_mses,
+                    'best_val_loss': best_val_loss,
+                    'best_epoch': best_epoch,
+                    'interrupted': True
+                }
+            )
+            logger.warning(f"✅ Saved recovery checkpoint: {interrupt_checkpoint_path}")
+            logger.warning("   Resume with: experiment.resume_from=\"{0}\"".format(interrupt_checkpoint_path))
+            break
         
         # Early stopping check
         if early_stopping is not None:

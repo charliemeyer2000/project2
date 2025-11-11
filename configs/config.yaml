@@ -74,6 +74,9 @@ experiment:
   save_final: true
   save_checkpoints: true
   
+  # Resume from checkpoint
+  resume_from: null  # Path to recovery checkpoint (e.g., "outputs/2024-01-15/12-30-45/checkpoints/recovery_epoch_10.pth" or "recovery_interrupt.pth")
+  
   # Database
   db_path: experiments/runs.db
   
