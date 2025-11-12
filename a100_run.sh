@@ -71,7 +71,8 @@ uv run train.py \
   training.use_perceptual=true \
   data.batch_size=1024 \
   data.num_workers=16 \
-  data.augment=false \
+  data.augment=true \
+  data.augmentation_strength=medium \
   training.mixed_precision=true \
   experiment.plot_frequency=25 \
   server.auto_submit=false \
