@@ -19,39 +19,51 @@ data:
   augmentation_strength: medium  # light, medium, strong
 
 model:
-  architecture: baseline
-  latent_dim: 32
+  architecture: attention  # baseline, efficient, attention
+  latent_dim: 16
   channels: 3
   img_size: 256
-  use_batch_norm: false
+  width_mult: 1.6  # Width multiplier for attention model (1.0=6MB, 1.6=15MB)
+  use_skip_connections: true  # U-Net style skip connections (CRITICAL for performance)
+  activation_type: tanh  # Output activation: tanh, sigmoid, none
+  norm_type: group  # Normalization: batch, group, none (group is best for inference)
+  use_batch_norm: false  # Deprecated - use norm_type instead
   dropout: 0.0
 
 training:
-  epochs: 20
+  epochs: 500
   lr: 0.002
   weight_decay: 0.0
   optimizer: adam
   
   # Loss configuration
-  loss_type: mixed  # mse, l1, mixed
+  loss_type: combined  # mse, l1, mixed, roi, combined
   lambda_l1: 0.5
+  lambda_roi: 15.0  # Weight for ROI region (increased from 5.0 to 15.0)
+  roi_size: 0.2  # Size of ROI as fraction of image (decreased from 0.3 to 0.2 for tighter focus)
+  lambda_perceptual: 0.1  # Weight for perceptual loss in combined loss
+  use_perceptual: true  # Use VGG-based perceptual loss
   
   # Learning rate scheduling
   scheduler: null  # null, step, cosine, onecycle
   scheduler_params: {}
+  warmup_epochs: 10  # LR warmup epochs (0 to disable)
+  
+  # Gradient clipping
+  max_grad_norm: 1.0  # Maximum gradient norm for clipping (null to disable)
   
   # Early stopping
   early_stopping: true
-  patience: 5
+  patience: 10  # Increased from 5 for longer training
   min_delta: 0.000001
   
   # Logging
   log_interval: 20
-  save_interval: 5
+  save_interval: 10
   
   # Device (auto, cuda, mps, cpu)
   device: auto  # Auto-detect best device (CUDA > MPS > CPU)
-  mixed_precision: false
+  mixed_precision: true  # Enable for faster training
 
 server:
   token: "324804cde56bd897a585341ce2bbea5c"

@@ -41,7 +41,8 @@ def get_model(model_config):
         architecture=model_config.architecture,
         channels=model_config.channels,
         latent_dim=model_config.latent_dim,
-        img_size=model_config.img_size
+        img_size=model_config.img_size,
+        width_mult=model_config.get('width_mult', 1.0)
     )
 
 
@@ -113,12 +114,24 @@ def main(cfg: DictConfig):
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Model parameters: {num_params:,}")
     
+    # Verify model size (especially important when using width_mult)
+    size_mb = num_params * 4 / (1024**2)  # Assuming fp32
+    logger.info(f"Model size: {size_mb:.2f} MB (fp32)")
+    
+    # Warning if width_mult is set but model is too small
+    if cfg.model.get('width_mult', 1.0) > 1.0 and size_mb < 10:
+        logger.error(f"⚠️  Model size is only {size_mb:.2f} MB but width_mult={cfg.model.width_mult}")
+        logger.error(f"⚠️  width_mult may not be applied correctly!")
+        logger.error(f"⚠️  Expected size: ~15 MB for width_mult=1.6")
+        raise ValueError("Model size mismatch - check width_mult parameter passing")
+    
     # Update database with model info
     db.update_experiment(
         run_name,
         model_architecture=cfg.model.architecture,
         latent_dim=cfg.model.latent_dim,
-        num_parameters=num_params
+        num_parameters=num_params,
+        model_size_mb=size_mb
     )
     
     # Create GPU augmentation if enabled and supported
@@ -178,7 +191,18 @@ def main(cfg: DictConfig):
     )
     
     # Create loss function
-    criterion = get_loss_fn(cfg.training.loss_type, cfg.training.lambda_l1)
+    lambda_roi = cfg.training.get('lambda_roi', 5.0)
+    roi_size = cfg.training.get('roi_size', 0.3)
+    lambda_perceptual = cfg.training.get('lambda_perceptual', 0.1)
+    use_perceptual = cfg.training.get('use_perceptual', False)
+    criterion = get_loss_fn(
+        loss_type=cfg.training.loss_type,
+        lambda_l1=cfg.training.lambda_l1,
+        lambda_roi=lambda_roi,
+        roi_size=roi_size,
+        lambda_perceptual=lambda_perceptual,
+        use_perceptual=use_perceptual
+    ).to(device)
     
     # Create scheduler
     scheduler = get_scheduler(
@@ -188,6 +212,17 @@ def main(cfg: DictConfig):
         cfg.training.epochs,
         len(train_loader)
     )
+    
+    # Create warmup scheduler if configured
+    warmup_scheduler = None
+    if cfg.training.get('warmup_epochs', 0) > 0:
+        from infrastructure.training import WarmupScheduler
+        warmup_scheduler = WarmupScheduler(
+            optimizer,
+            warmup_epochs=cfg.training.warmup_epochs,
+            base_lr=cfg.training.lr
+        )
+        logger.info(f"Using LR warmup for {cfg.training.warmup_epochs} epochs")
     
     # Early stopping
     early_stopping = None
@@ -273,7 +308,8 @@ def main(cfg: DictConfig):
             mixed_precision=cfg.training.mixed_precision,
             log_interval=cfg.training.log_interval,
             epoch=epoch,
-            gpu_augmentation=gpu_augmentation
+            gpu_augmentation=gpu_augmentation,
+            max_grad_norm=cfg.training.get('max_grad_norm', None)
         )
         
         # Validate
@@ -283,8 +319,10 @@ def main(cfg: DictConfig):
             mixed_precision=cfg.training.mixed_precision
         )
         
-        # Update scheduler
-        if scheduler is not None:
+        # Update learning rate (warmup takes priority)
+        if warmup_scheduler and epoch <= cfg.training.warmup_epochs:
+            warmup_scheduler.step()
+        elif scheduler is not None:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 scheduler.step(val_metrics['val_loss'])
             else:

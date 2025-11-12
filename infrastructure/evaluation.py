@@ -152,11 +152,11 @@ def calculate_weighted_score(latent_dim: int, full_mse: float,
     roi_score = normalize(roi_mse, roi_min, roi_max)
     size_score = normalize(model_size_mb, size_min, size_max)
     
-    # Weighted combination
+    # Weighted combination (matches competition formula)
     weighted_score = (
         0.40 * ld_score +
-        0.35 * mse_score +
-        0.20 * roi_score +
+        0.30 * mse_score +  # Changed from 0.35 to match competition
+        0.25 * roi_score +  # Changed from 0.20 to match competition
         0.05 * size_score
     )
     

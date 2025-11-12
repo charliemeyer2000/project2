@@ -16,7 +16,7 @@ def get_model(architecture: str, **kwargs):
     """Get model by name.
     
     Args:
-        architecture: Model architecture name (baseline, efficient)
+        architecture: Model architecture name (baseline, efficient, attention)
         **kwargs: Model-specific arguments (channels, latent_dim, img_size, etc.)
     
     Returns:
@@ -33,7 +33,14 @@ def get_model(architecture: str, **kwargs):
         )
     
     model_cls = MODEL_REGISTRY[architecture]
-    return model_cls(**kwargs)
+    
+    # Filter kwargs to only valid parameters for this model
+    import inspect
+    sig = inspect.signature(model_cls.__init__)
+    valid_params = set(sig.parameters.keys()) - {'self'}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
+    
+    return model_cls(**filtered_kwargs)
 
 
 def list_models():
