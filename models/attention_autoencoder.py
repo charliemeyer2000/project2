@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Tuple, List, Optional
 
 
 class ChannelAttention(nn.Module):
@@ -99,7 +100,7 @@ class AttentionEncoder(nn.Module):
         # Bottleneck
         self.fc = nn.Linear(c5 * 8 * 8, latent_dim)
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """Forward pass with skip connections.
         
         Returns:
@@ -203,7 +204,7 @@ class AttentionDecoder(nn.Module):
         else:  # 'none'
             self.deconv5 = nn.ConvTranspose2d(c1, 3, 4, stride=2, padding=1)
     
-    def forward(self, x, skip_connections=None):
+    def forward(self, x: torch.Tensor, skip_connections: Optional[List[torch.Tensor]] = None) -> torch.Tensor:
         """Forward pass with optional skip connections.
         
         Args:
@@ -270,9 +271,12 @@ class AttentionAutoencoder(nn.Module):
         self.enc = AttentionEncoder(latent_dim, width_mult, norm_type)
         self.dec = AttentionDecoder(latent_dim, width_mult, use_skip_connections, activation_type, norm_type)
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         z, skips = self.enc(x)
-        reconstructed = self.dec(z, skips if self.use_skip_connections else None)
+        if self.use_skip_connections:
+            reconstructed = self.dec(z, skips)
+        else:
+            reconstructed = self.dec(z, None)
         return reconstructed
     
     def encode(self, x):
