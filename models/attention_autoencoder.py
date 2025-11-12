@@ -261,15 +261,18 @@ class AttentionAutoencoder(nn.Module):
     """
     
     # Mark latent_dim as a TorchScript constant so it's preserved in exported models
-    __constants__ = ['latent_dim']
+    __constants__ = ['latent_dim', 'use_skip_connections']
     
     def __init__(self, latent_dim: int = 16, width_mult: float = 1.0, use_skip_connections: bool = True, activation_type: str = 'tanh', norm_type: str = 'group', **kwargs):
         super().__init__()
+        # CRITICAL: Store latent_dim as both instance variable AND in enc for server compatibility
         self.latent_dim = latent_dim
         self.use_skip_connections = use_skip_connections
         # Use 'enc' and 'dec' naming to match baseline for server compatibility
         self.enc = AttentionEncoder(latent_dim, width_mult, norm_type)
         self.dec = AttentionDecoder(latent_dim, width_mult, use_skip_connections, activation_type, norm_type)
+        # Ensure enc also exposes latent_dim for server
+        self.enc.latent_dim = latent_dim
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z, skips = self.enc(x)
