@@ -55,8 +55,14 @@ def infer_width_mult_from_state_dict(state_dict: dict, architecture: str) -> flo
     if architecture != 'attention':
         return 1.0
     
-    # For attention architecture, check the first conv layer
-    # Base width is 32, so actual_width / 32 = width_mult
+    # Check c2 (second conv layer) - more reliable due to int truncation
+    if 'enc.conv2.0.weight' in state_dict:
+        actual_c2 = state_dict['enc.conv2.0.weight'].shape[0]
+        base_c2 = 64
+        width_mult = actual_c2 / base_c2
+        return width_mult
+    
+    # Fallback to c1
     if 'enc.conv1.0.weight' in state_dict:
         actual_c1 = state_dict['enc.conv1.0.weight'].shape[0]
         base_c1 = 32
