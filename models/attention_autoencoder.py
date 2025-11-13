@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, List, Optional
+from typing import List, Optional
 
 
 class ChannelAttention(nn.Module):
@@ -100,12 +100,15 @@ class AttentionEncoder(nn.Module):
         # Bottleneck
         self.fc = nn.Linear(c5 * 8 * 8, latent_dim)
     
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
-        """Forward pass with skip connections.
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+        
+        CRITICAL: Returns ONLY the latent code tensor, not a tuple!
+        This is required for server latent_dim inference which checks output.shape[1].
+        Skip connections are stored in self._last_skips for the decoder to access.
         
         Returns:
             latent: Latent code [B, latent_dim]
-            skips: List of intermediate features [h1, h2, h3, h4] for skip connections
         """
         h1 = self.conv1(x)    # 128×128
         h2 = self.conv2(h1)   # 64×64
@@ -117,8 +120,11 @@ class AttentionEncoder(nn.Module):
         z = h5.view(h5.size(0), -1)
         z = self.fc(z)
         
-        # Return latent code and skip connections
-        return z, [h1, h2, h3, h4]
+        # Store skip connections for decoder (don't return them!)
+        self._last_skips = [h1, h2, h3, h4]
+        
+        # Return ONLY latent code (server infers latent_dim from this)
+        return z
 
 
 class AttentionDecoder(nn.Module):
@@ -275,17 +281,29 @@ class AttentionAutoencoder(nn.Module):
         self.enc.latent_dim = latent_dim
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z, skips = self.enc(x)
-        if self.use_skip_connections:
+        """Forward pass.
+        
+        Args:
+            x: Input images [B, 3, 256, 256]
+            
+        Returns:
+            Reconstructed images [B, 3, 256, 256]
+        """
+        # Encoder now returns only z and stores skips in self.enc._last_skips
+        z = self.enc(x)
+        
+        # Get skip connections from encoder if needed
+        if self.use_skip_connections and hasattr(self.enc, '_last_skips'):
+            skips = self.enc._last_skips
             reconstructed = self.dec(z, skips)
         else:
             reconstructed = self.dec(z, None)
+        
         return reconstructed
     
     def encode(self, x):
-        """Encode input to latent space (returns only latent code, not skips)."""
-        z, _ = self.enc(x)
-        return z
+        """Encode input to latent space (returns only latent code)."""
+        return self.enc(x)
     
     def decode(self, z):
         """Decode from latent space (without skip connections)."""
