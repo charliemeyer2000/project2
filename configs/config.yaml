@@ -1,15 +1,16 @@
 # Default configuration for autoencoder training
 
 defaults:
+  - model: attention
   - _self_
 
 data:
   data_root: data/training_dataset
   img_size: 256
   grayscale: false
-  batch_size: 64
-  num_workers: 4  # Increased for better parallelism (adjust based on your CPU cores)
-  pin_memory: true
+  batch_size: 64  # Auto-adjusted for MPS (2x → 128)
+  num_workers: 4  # Auto-adjusted for MPS (2x → 8)
+  pin_memory: true  # Auto-disabled for MPS
   train_split: 0.9
   shuffle: true
   seed: 42

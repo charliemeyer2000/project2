@@ -37,13 +37,9 @@ logger = logging.getLogger(__name__)
 
 def get_model(model_config):
     """Create model from configuration."""
-    return create_model(
-        architecture=model_config.architecture,
-        channels=model_config.channels,
-        latent_dim=model_config.latent_dim,
-        img_size=model_config.img_size,
-        width_mult=model_config.get('width_mult', 1.0)
-    )
+    # Convert config to dict and pass all parameters
+    config_dict = dict(model_config)
+    return create_model(**config_dict)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
@@ -85,8 +81,27 @@ def main(cfg: DictConfig):
     db.update_experiment(run_name, output_dir=str(output_dir))
     
     # Set device with Apple Silicon support
-    device = get_device(cfg.training.device)
+    device, opt_hints = get_device(cfg.training.device)
     print_device_info(device)
+    
+    # Apply device-specific optimizations
+    batch_size = cfg.data.batch_size
+    num_workers = cfg.data.num_workers
+    pin_memory = cfg.data.pin_memory
+    
+    if opt_hints:
+        # MPS-specific optimizations detected
+        if 'batch_size_multiplier' in opt_hints:
+            batch_size = int(batch_size * opt_hints['batch_size_multiplier'])
+            logger.info(f"🍎 MPS optimization: batch_size {cfg.data.batch_size} → {batch_size}")
+        
+        if 'num_workers_multiplier' in opt_hints:
+            num_workers = int(num_workers * opt_hints['num_workers_multiplier'])
+            logger.info(f"🍎 MPS optimization: num_workers {cfg.data.num_workers} → {num_workers}")
+        
+        if 'pin_memory' in opt_hints:
+            pin_memory = opt_hints['pin_memory']
+            logger.info(f"🍎 MPS optimization: pin_memory {cfg.data.pin_memory} → {pin_memory}")
     
     # Create dataloaders
     # NOTE: We disable CPU augmentation in dataloaders and use GPU augmentation instead!
@@ -96,14 +111,15 @@ def main(cfg: DictConfig):
         data_root=cfg.data.data_root,
         img_size=cfg.data.img_size,
         grayscale=cfg.data.grayscale,
-        batch_size=cfg.data.batch_size,
+        batch_size=batch_size,
         train_split=cfg.data.train_split,
-        num_workers=cfg.data.num_workers,
-        pin_memory=cfg.data.pin_memory,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
         seed=cfg.data.seed,
         shuffle=cfg.data.shuffle,
         augment=False,  # Always False - we use GPU augmentation instead!
-        augmentation_strength=cfg.data.augmentation_strength
+        augmentation_strength=cfg.data.augmentation_strength,
+        device_hints=opt_hints
     )
     
     # Create model

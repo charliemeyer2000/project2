@@ -220,7 +220,8 @@ def train_epoch(model: nn.Module, dataloader, optimizer,
     """
     model.train()
     
-    total_loss = 0.0
+    # Use tensor for loss accumulation to avoid GPU sync every batch
+    total_loss = torch.tensor(0.0, device=device)
     total_samples = 0
     
     scaler = GradScaler(device) if mixed_precision else None
@@ -269,15 +270,17 @@ def train_epoch(model: nn.Module, dataloader, optimizer,
         
         # Update metrics
         batch_size = x.size(0)
-        total_loss += loss.item() * batch_size
+        # Accumulate loss tensor on GPU to avoid synchronization
+        total_loss += loss.detach() * batch_size
         total_samples += batch_size
         
-        # Update progress bar
+        # Update progress bar (only sync every log_interval to reduce overhead)
         if (batch_idx + 1) % log_interval == 0 or batch_idx == 0:
-            avg_loss = total_loss / total_samples
+            avg_loss = total_loss.item() / total_samples if isinstance(total_loss, torch.Tensor) else total_loss / total_samples
             pbar.set_postfix({'loss': f'{avg_loss:.6f}'})
     
-    avg_loss = total_loss / total_samples if total_samples > 0 else float('inf')
+    # Only sync once at the end of epoch
+    avg_loss = (total_loss.item() / total_samples) if total_samples > 0 else float('inf')
     
     return {
         'train_loss': avg_loss,
@@ -303,8 +306,9 @@ def validate_epoch(model: nn.Module, dataloader, criterion,
     """
     model.eval()
     
-    total_loss = 0.0
-    total_mse = 0.0
+    # Use tensors for accumulation to avoid GPU sync every batch
+    total_loss = torch.tensor(0.0, device=device)
+    total_mse = torch.tensor(0.0, device=device)
     total_samples = 0
     
     mse_criterion = nn.MSELoss()
@@ -329,14 +333,15 @@ def validate_epoch(model: nn.Module, dataloader, criterion,
             loss = criterion(reconstructed, x)
             mse = mse_criterion(reconstructed, x)
         
-        # Update metrics
+        # Update metrics (accumulate on GPU)
         batch_size = x.size(0)
-        total_loss += loss.item() * batch_size
-        total_mse += mse.item() * batch_size
+        total_loss += loss.detach() * batch_size
+        total_mse += mse.detach() * batch_size
         total_samples += batch_size
     
-    avg_loss = total_loss / total_samples if total_samples > 0 else float('inf')
-    avg_mse = total_mse / total_samples if total_samples > 0 else float('inf')
+    # Only sync once at the end of validation
+    avg_loss = (total_loss.item() / total_samples) if total_samples > 0 else float('inf')
+    avg_mse = (total_mse.item() / total_samples) if total_samples > 0 else float('inf')
     
     return {
         'val_loss': avg_loss,

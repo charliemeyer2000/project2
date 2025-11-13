@@ -208,7 +208,8 @@ def create_dataloaders(data_root: str, img_size: int = 256,
                       pin_memory: bool = True, seed: int = 42,
                       shuffle: bool = True, 
                       augment: bool = False,
-                      augmentation_strength: str = "medium") -> Tuple[DataLoader, DataLoader]:
+                      augmentation_strength: str = "medium",
+                      device_hints: dict = None) -> Tuple[DataLoader, DataLoader]:
     """Create train and validation dataloaders.
     
     Args:
@@ -258,6 +259,11 @@ def create_dataloaders(data_root: str, img_size: int = 256,
         num_workers = probe_workers()
         logger.info(f"Auto-detected {num_workers} workers")
     
+    # Apply device-specific optimizations
+    prefetch_factor = 4  # Default
+    if device_hints and 'prefetch_factor' in device_hints:
+        prefetch_factor = device_hints['prefetch_factor']
+    
     # Create dataloaders with optimizations for fast GPUs
     # persistent_workers=True keeps workers alive between epochs (MUCH faster!)
     # prefetch_factor controls how many batches to load ahead
@@ -267,8 +273,8 @@ def create_dataloaders(data_root: str, img_size: int = 256,
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        persistent_workers=(num_workers > 0),  # Keep workers alive between epochs
-        prefetch_factor=4 if num_workers > 0 else None  # Increased for better pipelining
+        persistent_workers=(num_workers > 0),
+        prefetch_factor=prefetch_factor if num_workers > 0 else None
     )
     
     val_loader = DataLoader(
@@ -277,8 +283,8 @@ def create_dataloaders(data_root: str, img_size: int = 256,
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        persistent_workers=(num_workers > 0),  # Keep workers alive between epochs
-        prefetch_factor=4 if num_workers > 0 else None  # Increased for better pipelining
+        persistent_workers=(num_workers > 0),
+        prefetch_factor=prefetch_factor if num_workers > 0 else None
     )
     
     logger.info(f"Created dataloaders: {len(train_loader)} train batches, "

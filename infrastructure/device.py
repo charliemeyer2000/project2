@@ -34,6 +34,7 @@ def optimize_for_apple_silicon():
     """Apply Apple Silicon (MPS) optimizations.
     
     Sets environment variables and thread counts for optimal MPS performance.
+    Returns recommended dataloader settings.
     """
     logger.info("🍎 Applying Apple Silicon optimizations...")
     
@@ -49,6 +50,14 @@ def optimize_for_apple_silicon():
     torch.set_num_threads(10)
     
     logger.info(f"  ✅ PyTorch threads: {torch.get_num_threads()}")
+    logger.info(f"  ✅ Recommended: batch_size=128-192, num_workers=8, pin_memory=False")
+    
+    return {
+        'num_workers_multiplier': 2.0,  # Increase num_workers by 2x for MPS
+        'batch_size_multiplier': 2.0,   # Increase batch_size by 2x for MPS
+        'pin_memory': False,             # Disable pin_memory for unified memory
+        'prefetch_factor': 10            # Higher prefetch for MPS
+    }
 
 
 def optimize_for_cpu():
@@ -67,7 +76,7 @@ def optimize_for_cpu():
     logger.info(f"  ✅ PyTorch threads: {num_threads}")
 
 
-def get_device(preferred_device: str = "auto") -> str:
+def get_device(preferred_device: str = "auto") -> tuple:
     """Get the best available device with automatic optimization.
     
     Priority (when auto): CUDA > MPS > CPU
@@ -76,8 +85,10 @@ def get_device(preferred_device: str = "auto") -> str:
         preferred_device: Preferred device ("auto", "cuda", "mps", "cpu")
         
     Returns:
-        Device string ("cuda", "mps", or "cpu")
+        Tuple of (device_string, optimization_hints_dict)
     """
+    opt_hints = {}
+    
     if preferred_device == "auto":
         # Auto-detect: CUDA > MPS > CPU
         if torch.cuda.is_available():
@@ -86,7 +97,7 @@ def get_device(preferred_device: str = "auto") -> str:
             logger.info("✅ Using CUDA (NVIDIA GPU)")
         elif torch.backends.mps.is_available():
             device = "mps"
-            optimize_for_apple_silicon()
+            opt_hints = optimize_for_apple_silicon()
             logger.info("✅ Using MPS (Apple Silicon GPU)")
         else:
             device = "cpu"
@@ -106,7 +117,7 @@ def get_device(preferred_device: str = "auto") -> str:
     elif preferred_device == "mps":
         if torch.backends.mps.is_available():
             device = "mps"
-            optimize_for_apple_silicon()
+            opt_hints = optimize_for_apple_silicon()
             logger.info("✅ Using MPS (Apple Silicon GPU)")
         else:
             logger.warning("⚠️  MPS not available, falling back to CPU")
@@ -122,7 +133,7 @@ def get_device(preferred_device: str = "auto") -> str:
         logger.warning(f"Unknown device '{preferred_device}', using auto-detect")
         return get_device("auto")
     
-    return device
+    return device, opt_hints
 
 
 def print_device_info(device: str):

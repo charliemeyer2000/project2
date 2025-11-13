@@ -1,0 +1,22 @@
+# Advanced Autoencoder Configuration
+# Designed to achieve rank #1 with CBAM attention and optimal architecture
+
+architecture: advanced
+latent_dim: 8  # OPTIMAL for latent dimension score (40% weight)
+
+# Architecture parameters (optimized for ~21.5MB, under 23MB limit)
+base_channels: 36
+depth_multiplier: 1.55
+
+# Skip connections are CRITICAL for performance
+use_skip_connections: true
+
+# Activation and normalization
+activation_type: tanh  # Better than sigmoid for this task
+norm_type: group  # Better than batch for inference stability
+
+# Expected performance:
+# - Latent Dim Score: 1.000 (LD=8 is optimal)
+# - Model Size: ~21.5 MB (under 23MB limit)
+# - Should achieve rank #1-3 with proper training
+
