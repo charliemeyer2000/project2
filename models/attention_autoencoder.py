@@ -37,6 +37,9 @@ class AttentionEncoder(nn.Module):
         self.width_mult = width_mult
         self.norm_type = norm_type
         
+        # Initialize skip connections storage (required for TorchScript)
+        self._last_skips: List[torch.Tensor] = []
+        
         # Calculate channel dimensions (scaled by width_mult)
         c1 = int(32 * width_mult)
         c2 = int(64 * width_mult)
