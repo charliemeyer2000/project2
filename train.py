@@ -465,10 +465,11 @@ def main(cfg: DictConfig):
         training_time_seconds=total_time
     )
     
-    # Save final TorchScript model
+    # Save final TorchScript model (move to CPU first to avoid CUDA tensor bloat)
     logger.info("Converting to TorchScript...")
     torchscript_path = output_dir / "model_submission.pt"
-    save_torchscript(model, str(torchscript_path), verify=True)
+    model_cpu = model.cpu()
+    save_torchscript(model_cpu, str(torchscript_path), verify=True)
     
     # Update database with model size
     model_size_mb = torchscript_path.stat().st_size / (1024 * 1024)
@@ -478,8 +479,9 @@ def main(cfg: DictConfig):
         torchscript_path=str(torchscript_path)
     )
     
-    # Final evaluation
+    # Final evaluation (move model back to device)
     logger.info("Performing final evaluation...")
+    model = model_cpu.to(device)
     eval_metrics = evaluate_model(
         model, train_loader, val_loader,
         str(torchscript_path), device
