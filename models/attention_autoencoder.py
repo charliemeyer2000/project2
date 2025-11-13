@@ -37,9 +37,6 @@ class AttentionEncoder(nn.Module):
         self.width_mult = width_mult
         self.norm_type = norm_type
         
-        # Initialize skip connections storage (required for TorchScript)
-        self._last_skips: List[torch.Tensor] = []
-        
         # Calculate channel dimensions (scaled by width_mult)
         c1 = int(32 * width_mult)
         c2 = int(64 * width_mult)
@@ -123,10 +120,8 @@ class AttentionEncoder(nn.Module):
         z = h5.view(h5.size(0), -1)
         z = self.fc(z)
         
-        # Store skip connections for decoder (don't return them!)
-        self._last_skips = [h1, h2, h3, h4]
-        
         # Return ONLY latent code (server infers latent_dim from this)
+        # Skip connections disabled for TorchScript compatibility
         return z
 
 
@@ -292,15 +287,11 @@ class AttentionAutoencoder(nn.Module):
         Returns:
             Reconstructed images [B, 3, 256, 256]
         """
-        # Encoder now returns only z and stores skips in self.enc._last_skips
+        # Encoder returns only z (skip connections disabled for TorchScript)
         z = self.enc(x)
         
-        # Get skip connections from encoder if needed
-        if self.use_skip_connections and hasattr(self.enc, '_last_skips'):
-            skips = self.enc._last_skips
-            reconstructed = self.dec(z, skips)
-        else:
-            reconstructed = self.dec(z, None)
+        # Decode (no skip connections for TorchScript compatibility)
+        reconstructed = self.dec(z, None)
         
         return reconstructed
     
