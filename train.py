@@ -26,6 +26,7 @@ from infrastructure.visualization import (
     plot_loss_curves, plot_mse_comparison, plot_reconstructions
 )
 from infrastructure.gpu_augmentation import GPUAugmentation, is_gpu_augmentation_supported
+from infrastructure.async_io import AsyncCheckpointer, AsyncPlotter, AsyncDatabaseWriter
 from models import get_model as create_model, list_models
 
 logging.basicConfig(
@@ -248,6 +249,23 @@ def main(cfg: DictConfig):
             min_delta=cfg.training.min_delta
         )
     
+    # Initialize async I/O handlers (maximize GPU utilization by offloading disk I/O)
+    async_checkpointer = None
+    async_plotter = None
+    async_db_writer = None
+    
+    if cfg.experiment.get('async_checkpointing', True):
+        async_checkpointer = AsyncCheckpointer(max_workers=1)
+        logger.info("🚀 Async checkpointing enabled (GPU utilization optimized)")
+    
+    if cfg.experiment.get('async_plotting', True):
+        async_plotter = AsyncPlotter(max_workers=2)
+        logger.info("🚀 Async plotting enabled (GPU utilization optimized)")
+    
+    if cfg.experiment.get('async_database', False):
+        async_db_writer = AsyncDatabaseWriter(max_workers=1)
+        logger.info("🚀 Async database writes enabled")
+    
     # Training history
     train_losses = []
     val_losses = []
@@ -384,12 +402,22 @@ def main(cfg: DictConfig):
                 # Save lightweight model checkpoint (just weights, no optimizer)
                 best_model_path = output_dir / "checkpoints" / "best_model.pth"
                 best_model_path.parent.mkdir(parents=True, exist_ok=True)
-                torch.save({
+                
+                checkpoint = {
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'val_loss': val_loss,
-                }, best_model_path)
-                logger.info(f"💾 Saved best model (epoch {epoch}, val_loss: {val_loss:.6f})")
+                }
+                
+                # Use async checkpointing if enabled (non-blocking GPU utilization)
+                if async_checkpointer:
+                    async_checkpointer.save_async(
+                        checkpoint, str(best_model_path),
+                        log_message=f"💾 Saved best model (epoch {epoch}, val_loss: {val_loss:.6f})"
+                    )
+                else:
+                    torch.save(checkpoint, best_model_path)
+                    logger.info(f"💾 Saved best model (epoch {epoch}, val_loss: {val_loss:.6f})")
         
         # Periodic FULL checkpoint for recovery (optimizer state + training history)
         if cfg.experiment.save_checkpoints and epoch % cfg.training.save_interval == 0:
@@ -409,15 +437,18 @@ def main(cfg: DictConfig):
         
         # Plot if requested
         if cfg.experiment.plot_frequency > 0 and epoch % cfg.experiment.plot_frequency == 0:
+            # Use async plotting if enabled (non-blocking GPU utilization)
             plot_loss_curves(
                 train_losses, val_losses,
-                save_path=str(output_dir / "plots" / f"loss_epoch_{epoch}.png")
+                save_path=str(output_dir / "plots" / f"loss_epoch_{epoch}.png"),
+                async_plotter=async_plotter
             )
             
             if val_mses and train_mses:
                 plot_mse_comparison(
                     train_mses, val_mses,
-                    save_path=str(output_dir / "plots" / f"mse_epoch_{epoch}.png")
+                    save_path=str(output_dir / "plots" / f"mse_epoch_{epoch}.png"),
+                    async_plotter=async_plotter
                 )
         
         # Check for interrupt signal
@@ -453,6 +484,15 @@ def main(cfg: DictConfig):
     logger.info(f"Training complete! Total time: {total_time:.2f}s")
     logger.info(f"Best epoch: {best_epoch} (Val Loss: {best_val_loss:.6f})")
     logger.info("=" * 80)
+    
+    # Wait for any pending async operations before proceeding
+    if async_checkpointer:
+        logger.info("⏳ Waiting for pending checkpoint operations...")
+        async_checkpointer.wait()
+    
+    if async_plotter:
+        logger.info("⏳ Waiting for pending plot operations...")
+        async_plotter.wait_all()
     
     # Update database with final metrics
     db.update_experiment(
@@ -494,13 +534,15 @@ def main(cfg: DictConfig):
     if cfg.experiment.plot_frequency > 0:
         plot_loss_curves(
             train_losses, val_losses,
-            save_path=str(output_dir / "plots" / "loss_final.png")
+            save_path=str(output_dir / "plots" / "loss_final.png"),
+            async_plotter=async_plotter
         )
         
         if val_mses and train_mses:
             plot_mse_comparison(
                 train_mses, val_mses,
-                save_path=str(output_dir / "plots" / "mse_final.png")
+                save_path=str(output_dir / "plots" / "mse_final.png"),
+                async_plotter=async_plotter
             )
     
     # Save reconstructions
@@ -508,7 +550,8 @@ def main(cfg: DictConfig):
         plot_reconstructions(
             model, val_loader, device=device,
             num_samples=cfg.experiment.num_reconstruction_samples,
-            save_path=str(output_dir / "plots" / "reconstructions.png")
+            save_path=str(output_dir / "plots" / "reconstructions.png"),
+            async_plotter=async_plotter
         )
     
     # Auto-submit if requested
@@ -570,6 +613,16 @@ def main(cfg: DictConfig):
     
     # Close database
     db.close()
+    
+    # Shutdown async I/O handlers (wait for any remaining operations)
+    if async_checkpointer:
+        async_checkpointer.shutdown(wait=True)
+    
+    if async_plotter:
+        async_plotter.shutdown(wait=True)
+    
+    if async_db_writer:
+        async_db_writer.shutdown(wait=True)
     
     logger.info("=" * 80)
     logger.info(f"Run complete! Results saved to: {output_dir}")

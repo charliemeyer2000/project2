@@ -19,7 +19,8 @@ plt.rcParams['figure.figsize'] = (12, 8)
 
 
 def plot_loss_curves(train_losses: List[float], val_losses: List[float],
-                    save_path: Optional[str] = None, show: bool = False):
+                    save_path: Optional[str] = None, show: bool = False,
+                    async_plotter=None):
     """Plot training and validation loss curves.
     
     Args:
@@ -27,6 +28,7 @@ def plot_loss_curves(train_losses: List[float], val_losses: List[float],
         val_losses: List of validation losses per epoch
         save_path: Optional path to save plot
         show: Whether to show plot
+        async_plotter: Optional AsyncPlotter instance for non-blocking save
     """
     fig, ax = plt.subplots(figsize=(10, 6))
     
@@ -51,17 +53,25 @@ def plot_loss_curves(train_losses: List[float], val_losses: List[float],
     
     if save_path:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        logger.info(f"Saved loss curve: {save_path}")
+        
+        # Use async plotting if available (non-blocking)
+        if async_plotter:
+            async_plotter.save_async(fig, save_path, dpi=300, bbox_inches='tight', close_fig=True)
+            logger.info(f"Saving loss curve (async): {save_path}")
+        else:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Saved loss curve: {save_path}")
+            plt.close()
     
     if show:
         plt.show()
-    else:
+    elif not save_path:
         plt.close()
 
 
 def plot_mse_comparison(train_mses: List[float], val_mses: List[float],
-                       save_path: Optional[str] = None, show: bool = False):
+                       save_path: Optional[str] = None, show: bool = False,
+                       async_plotter=None):
     """Plot training and validation MSE comparison.
     
     Args:
@@ -69,6 +79,7 @@ def plot_mse_comparison(train_mses: List[float], val_mses: List[float],
         val_mses: List of validation MSEs per epoch
         save_path: Optional path to save plot
         show: Whether to show plot
+        async_plotter: Optional AsyncPlotter instance for non-blocking save
     """
     fig, ax = plt.subplots(figsize=(10, 6))
     
@@ -88,12 +99,19 @@ def plot_mse_comparison(train_mses: List[float], val_mses: List[float],
     
     if save_path:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        logger.info(f"Saved MSE comparison: {save_path}")
+        
+        # Use async plotting if available (non-blocking)
+        if async_plotter:
+            async_plotter.save_async(fig, save_path, dpi=300, bbox_inches='tight', close_fig=True)
+            logger.info(f"Saving MSE comparison (async): {save_path}")
+        else:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Saved MSE comparison: {save_path}")
+            plt.close()
     
     if show:
         plt.show()
-    else:
+    elif not save_path:
         plt.close()
 
 
@@ -101,7 +119,8 @@ def plot_mse_comparison(train_mses: List[float], val_mses: List[float],
 def plot_reconstructions(model, dataloader, device: str = "cuda",
                         num_samples: int = 8,
                         save_path: Optional[str] = None,
-                        show: bool = False):
+                        show: bool = False,
+                        async_plotter=None):
     """Plot original vs reconstructed images.
     
     Args:
@@ -111,6 +130,7 @@ def plot_reconstructions(model, dataloader, device: str = "cuda",
         num_samples: Number of samples to visualize
         save_path: Optional path to save plot
         show: Whether to show plot
+        async_plotter: Optional AsyncPlotter instance for non-blocking save
     """
     model.eval()
     
@@ -151,12 +171,19 @@ def plot_reconstructions(model, dataloader, device: str = "cuda",
     
     if save_path:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        logger.info(f"Saved reconstructions: {save_path}")
+        
+        # Use async plotting if available (non-blocking)
+        if async_plotter:
+            async_plotter.save_async(fig, save_path, dpi=300, bbox_inches='tight', close_fig=True)
+            logger.info(f"Saving reconstructions (async): {save_path}")
+        else:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            logger.info(f"Saved reconstructions: {save_path}")
+            plt.close()
     
     if show:
         plt.show()
-    else:
+    elif not save_path:
         plt.close()
 
 

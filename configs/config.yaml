@@ -97,6 +97,11 @@ experiment:
   plot_frequency: 5  # Only plot every 5 epochs (saves TONS of time)
   save_reconstructions: true
   num_reconstruction_samples: 8
+  
+  # Async I/O (maximize GPU utilization by offloading disk writes to threads)
+  async_checkpointing: true  # Save checkpoints in background thread
+  async_plotting: true  # Save plots in background thread
+  async_database: false  # Database writes in background (experimental, usually fast enough)
 
 # Hydra configuration
 hydra:
