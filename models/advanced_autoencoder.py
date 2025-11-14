@@ -257,8 +257,12 @@ class AdvancedEncoder(nn.Module):
         # Bottleneck to latent space
         self.fc = nn.Linear(c5 * 4 * 4, latent_dim)
         
-        # Store skip connections
-        self._last_skips: List[torch.Tensor] = []
+        # Initialize skip connections storage (MUST be in __init__ for TorchScript!)
+        # Use empty tensors as placeholders
+        self.skip1 = torch.empty(0)
+        self.skip2 = torch.empty(0)
+        self.skip3 = torch.empty(0)
+        self.skip4 = torch.empty(0)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Encode to latent space, store skip connections."""
@@ -275,8 +279,11 @@ class AdvancedEncoder(nn.Module):
         z = h_pooled.view(h_pooled.size(0), -1)
         z = self.fc(z)
         
-        # Store skip connections
-        self._last_skips = [h1, h2, h3, h4]
+        # Store skip connections as attributes (TorchScript compatible)
+        self.skip1 = h1
+        self.skip2 = h2
+        self.skip3 = h3
+        self.skip4 = h4
         
         return z
 
@@ -464,8 +471,9 @@ class AdvancedAutoencoder(nn.Module):
         z = self.enc(x)
         
         # Decode with skip connections
-        if self.use_skip_connections and hasattr(self.enc, '_last_skips'):
-            reconstructed = self.dec(z, self.enc._last_skips)
+        if self.use_skip_connections:
+            skips = [self.enc.skip1, self.enc.skip2, self.enc.skip3, self.enc.skip4]
+            reconstructed = self.dec(z, skips)
         else:
             reconstructed = self.dec(z, None)
         

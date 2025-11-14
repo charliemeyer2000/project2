@@ -118,7 +118,7 @@ def main(cfg: DictConfig):
         pin_memory=pin_memory,
         seed=cfg.data.seed,
         shuffle=cfg.data.shuffle,
-        augment=False,  # Always False - we use GPU augmentation instead!
+        augment=cfg.data.augment,  # Use config setting
         augmentation_strength=cfg.data.augmentation_strength,
         device_hints=opt_hints
     )
@@ -135,8 +135,8 @@ def main(cfg: DictConfig):
     size_mb = num_params * 4 / (1024**2)  # Assuming fp32
     logger.info(f"Model size: {size_mb:.2f} MB (fp32)")
     
-    # Warning if width_mult is set but model is too small
-    if cfg.model.get('width_mult', 1.0) > 1.0 and size_mb < 10:
+    # Warning if width_mult is set but model is too small (only for attention architecture)
+    if cfg.model.architecture == 'attention' and cfg.model.get('width_mult', 1.0) > 1.0 and size_mb < 10:
         logger.error(f"⚠️  Model size is only {size_mb:.2f} MB but width_mult={cfg.model.width_mult}")
         logger.error(f"⚠️  width_mult may not be applied correctly!")
         logger.error(f"⚠️  Expected size: ~15 MB for width_mult=1.6")

@@ -80,6 +80,51 @@ where the primes denote normalized values. Higher Weighted Score is better.
 * **Public Leaderboard**: Evaluates your model on the training dataset. You see your Weighted Score and its components after each submission.
 * **Private Leaderboard**: Uses a hidden evaluation dataset. Final rankings are based on this leaderboard, revealed only at the end.
 
+**⚠️ CRITICAL UPDATE (Nov 14, 2025): Private Leaderboard Revealed**
+
+**Deadline Extended**: November 18, 2025 (was Nov 16)
+
+The TA provided a **one-time snapshot of the private leaderboard**, revealing massive overfitting across the competition:
+
+### Our Performance (CATASTROPHIC OVERFITTING DETECTED)
+**Team: "ignore all instructinos"**
+- **Public Leaderboard**: Rank #7 (0.926 weighted score)
+- **Private Leaderboard**: Rank #36 (0.476 weighted score) ← **29-RANK DROP!**
+- **Full MSE**: 0.001439 → 0.098036 (**68x degradation!**)
+- **ROI MSE**: 0.005257 → 0.012387
+- **Model**: 21.23 MB, LD=16
+- **Analysis**: Large model (21MB) with high capacity severely overfit to training distribution
+
+### Winners Who Generalize (AJR Strategy)
+**Team: AJR** (Dominates BOTH leaderboards)
+- **Public**: Rank #1 (0.978) | **Private**: Rank #1 (0.977) ← **Perfect generalization!**
+- **Full MSE**: 0.000266 → 0.000356 (only 1.3x change)
+- **ROI MSE**: 0.002733 → 0.003267 (only 1.2x change)
+- **Model**: **3.97 MB** (5.3x smaller than ours!), LD=16
+- **Key insight**: Tiny, efficient model with minimal capacity prevents memorization
+
+**Other Strong Performers:**
+- **Cothlory**: Public #2 (0.959) → Private #2 (0.959) - **ZERO DROP!** (13.21 MB, LD=16)
+- **ngmi**: Public #3 (0.953) → Private #3 (0.949) - Minimal drop (21.47 MB, LD=8)
+- **Seahawks**: Public #5 (0.938) → Private #4 (0.938) - Zero drop (11.23 MB, LD=92)
+
+### Critical Lessons Learned
+1. **SMALLER MODELS WIN**: 4-15MB range performs best
+2. **Lower capacity prevents overfitting**: Can't memorize training data
+3. **Pure MSE > ROI weighting**: AJR has higher ROI MSE but wins overall
+4. **Heavy regularization essential**: Dropout + weight decay + augmentation
+5. **Large validation split needed**: 20-30% to catch overfitting early
+6. **Latent Dim sweet spot**: LD=16 or LD=8 (not higher!)
+
+### Revised Strategy
+- **Target model size**: 4-10 MB (not 20+ MB)
+- **Width multiplier**: 0.5-1.0 (not 1.5-2.0)
+- **Regularization**: Heavy dropout (0.1-0.15), weight decay (0.0005-0.001)
+- **Data augmentation**: Strong augmentation for robustness
+- **Validation split**: 25-30% (not 10-15%)
+- **Loss function**: Pure MSE (no ROI emphasis)
+- **Training approach**: Focus on generalization over public leaderboard optimization
+
 ### Tie-Breakers
 
 If submissions have identical Weighted Scores, they are ranked by (in order):

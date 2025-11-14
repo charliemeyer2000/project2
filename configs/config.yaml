@@ -20,16 +20,23 @@ data:
   augmentation_strength: medium  # light, medium, strong
 
 model:
-  architecture: attention  # baseline, efficient, attention
+  architecture: attention  # baseline, efficient, attention, mini_attention, lightweight
   latent_dim: 16
   channels: 3
   img_size: 256
+  
+  # AttentionAutoencoder params
   width_mult: 1.6  # Width multiplier for attention model (1.0=6MB, 1.6=15MB)
   use_skip_connections: true  # U-Net style skip connections (CRITICAL for performance)
   activation_type: tanh  # Output activation: tanh, sigmoid, none
   norm_type: group  # Normalization: batch, group, none (group is best for inference)
   use_batch_norm: false  # Deprecated - use norm_type instead
   dropout: 0.0
+  
+  # MiniAttention & Lightweight params
+  base_channels: 24  # Base channel count (16->tiny, 24->medium, 32->large)
+  dropout_rate: 0.15  # For lightweight model
+  use_dropout: true  # For lightweight model
 
 training:
   epochs: 500

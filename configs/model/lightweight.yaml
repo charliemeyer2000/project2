@@ -1,0 +1,9 @@
+# Lightweight Autoencoder Configuration
+# Inspired by AJR's winning strategy: simple, small, generalizable
+
+architecture: lightweight
+latent_dim: 16  # AJR's proven sweet spot
+base_channels: 16  # Target ~4-6 MB model size
+use_dropout: true  # Regularization
+dropout_rate: 0.2  # Moderate dropout
+

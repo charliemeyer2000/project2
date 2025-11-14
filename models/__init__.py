@@ -4,6 +4,8 @@ from .baseline import BaselineAutoencoder
 from .efficient import EfficientAutoencoder
 from .attention_autoencoder import AttentionAutoencoder
 from .advanced_autoencoder import AdvancedAutoencoder
+from .lightweight_autoencoder import LightweightAutoencoder
+from .mini_attention import MiniAttentionAutoencoder
 
 # Model registry for easy swapping
 MODEL_REGISTRY = {
@@ -11,6 +13,8 @@ MODEL_REGISTRY = {
     'efficient': EfficientAutoencoder,
     'attention': AttentionAutoencoder,
     'advanced': AdvancedAutoencoder,
+    'lightweight': LightweightAutoencoder,
+    'mini_attention': MiniAttentionAutoencoder,
 }
 
 
@@ -55,6 +59,8 @@ __all__ = [
     'EfficientAutoencoder',
     'AttentionAutoencoder',
     'AdvancedAutoencoder',
+    'LightweightAutoencoder',
+    'MiniAttentionAutoencoder',
     'MODEL_REGISTRY',
     'get_model',
     'list_models',
